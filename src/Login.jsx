@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useAuth } from './useAuth'
-import toast from 'react-hot-toast'
 import {CreditCard} from 'lucide-react'
+
+import { toast } from 'react-toastify'
 
 export default function Login() {
   const { registrar, iniciarSesion } = useAuth()

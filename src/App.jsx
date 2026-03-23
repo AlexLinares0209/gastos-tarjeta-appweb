@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import toast from 'react-hot-toast'
 import { useGastos, calcularCuotas } from './useGastos'
 import { useAuth } from './useAuth'
 import { exportarExcel } from './exportar'
@@ -7,6 +6,8 @@ import ModalGasto from './ModalGasto'
 import { ChevronDown, ChevronRight, Download, Goal, LogOut, Pencil, Plus, Trash, TriangleAlert } from 'lucide-react'
 
 import { AnimatePresence, motion } from 'framer-motion'
+
+import { toast } from 'react-toastify'
 
 const fmt = n => `S/.${parseFloat(n).toFixed(2)}`
 
@@ -362,7 +363,7 @@ export default function App({ usuario }) {
         <ModalConfirmar titulo="Eliminar gasto"
           mensaje={`¿Seguro que quieres eliminar "${confirmar.lugar}" (${fmt(confirmar.monto)})? Esta acción no se puede deshacer.`}
           labelConfirmar="Sí, eliminar"
-          onConfirmar={async () => { await eliminarGasto(confirmar.id); toast.success('Gasto eliminado') }}
+          onConfirmar={async () => { await eliminarGasto(confirmar.id); toast.error('Gasto eliminado') }}
           onCerrar={() => setConfirmar(null)} />
       )}
 

@@ -1,6 +1,7 @@
 import { X } from 'lucide-react'
 import { useState } from 'react'
-import toast from 'react-hot-toast'
+
+import { toast } from 'react-toastify'
 
 const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
   'JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
@@ -20,7 +21,7 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
     if (!form.fecha) return toast.error('Selecciona una fecha')
     if (!form.monto || parseFloat(form.monto) <= 0) return toast.error('Ingresa un monto válido')
     onGuardar({ ...form, monto: parseFloat(form.monto), cuotas: parseInt(form.cuotas) })
-    toast.success(gasto?.id ? 'Gasto actualizado' : 'Gasto agregado')
+    //toast.success(gasto?.id ? 'Gasto actualizado' : 'Gasto agregado')
     onCerrar()
   }
 
