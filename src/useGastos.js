@@ -115,6 +115,22 @@ export function useGastos(userId) {
   }
 }
 
+  const resetearTodo = async () => {
+    const [gastosResult, cierresResult, configResult] = await Promise.all([
+      supabase.from('gastos').delete().eq('user_id', userId),
+      supabase.from('cierres').delete().eq('user_id', userId),
+      supabase.from('configuracion').delete().eq('user_id', userId),
+    ])
+
+    const error = gastosResult.error || cierresResult.error || configResult.error
+    if (error) return { error }
+
+    setGastos([])
+    setCierres({})
+    setLineaCreditoState(1200)
+    return { error: null }
+  }
+
   async function crearCierreDefault(mes) {
     const idx = ORDEN_MESES.indexOf(mes)
     const year = 2026
@@ -223,6 +239,6 @@ export function useGastos(userId) {
     disponible, deudaPendiente,
     gastosPorMes, totalPagarMes, cuotasPendientesEnMes,
     alertas, agregarGasto, editarGasto, eliminarGasto,
-    marcarPagado, actualizarCierre,
+    marcarPagado, actualizarCierre, resetearTodo,
   }
 }

@@ -3,7 +3,7 @@ import { useGastos, calcularCuotas } from './useGastos'
 import { useAuth } from './useAuth'
 import { exportarExcel } from './exportar'
 import ModalGasto from './ModalGasto'
-import { ChevronDown, ChevronRight, Download, Goal, LogOut, Pencil, Plus, Trash, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, Download, Goal, LogOut, Pencil, Plus, RotateCcw, Trash, TriangleAlert } from 'lucide-react'
 
 import { AnimatePresence, motion } from 'framer-motion'
 
@@ -227,7 +227,7 @@ export default function App({ usuario }) {
     lineaCredito, setLineaCredito,
     disponible, deudaPendiente,
     gastosPorMes, totalPagarMes, cuotasPendientesEnMes,
-    alertas, agregarGasto, editarGasto, eliminarGasto, marcarPagado,
+    alertas, agregarGasto, editarGasto, eliminarGasto, marcarPagado, resetearTodo,
   } = useGastos(usuario.id)
 
   const [modal, setModal] = useState(null)
@@ -278,6 +278,10 @@ export default function App({ usuario }) {
             <button onClick={async () => { await cerrarSesion(); toast.success('Sesión cerrada') }}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-transparent border border-border rounded-xl text-muted text-sm cursor-pointer whitespace-nowrap font-sans hover:opacity-90">
               <LogOut size={14} /> Salir
+            </button>
+            <button onClick={() => setConfirmar({ tipo: 'reset' })}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-transparent border border-danger rounded-xl text-danger text-sm cursor-pointer whitespace-nowrap font-sans hover:bg-danger hover:text-white transition-colors">
+              <RotateCcw size={14} /> Resetear todo
             </button>
           </div>
         </div>
@@ -360,10 +364,22 @@ export default function App({ usuario }) {
         <ModalLineaCredito valor={lineaCredito} onGuardar={setLineaCredito} onCerrar={() => setModalLinea(false)} />
       )}
       {confirmar && (
-        <ModalConfirmar titulo="Eliminar gasto"
-          mensaje={`¿Seguro que quieres eliminar "${confirmar.lugar}" (${fmt(confirmar.monto)})? Esta acción no se puede deshacer.`}
-          labelConfirmar="Sí, eliminar"
-          onConfirmar={async () => { await eliminarGasto(confirmar.id); toast.error('Gasto eliminado') }}
+        <ModalConfirmar
+          titulo={confirmar.tipo === 'reset' ? 'Resetear todos los datos' : 'Eliminar gasto'}
+          mensaje={confirmar.tipo === 'reset'
+            ? 'Se eliminarán todos tus gastos y cierres, y la línea de crédito volverá a S/.1200. Esta acción no se puede deshacer.'
+            : `¿Seguro que quieres eliminar "${confirmar.lugar}" (${fmt(confirmar.monto)})? Esta acción no se puede deshacer.`}
+          labelConfirmar={confirmar.tipo === 'reset' ? 'Sí, resetear todo' : 'Sí, eliminar'}
+          onConfirmar={async () => {
+            if (confirmar.tipo === 'reset') {
+              const { error } = await resetearTodo()
+              if (error) toast.error('No se pudieron resetear todos los datos')
+              else toast.success('Todos los datos fueron eliminados')
+            } else {
+              await eliminarGasto(confirmar.id)
+              toast.error('Gasto eliminado')
+            }
+          }}
           onCerrar={() => setConfirmar(null)} />
       )}
 
