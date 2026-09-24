@@ -13,7 +13,7 @@ export function exportarExcel(gastos, cierres, calcularCuotas) {
   meses.forEach(mes => {
     const total = gastos
       .filter(g => g.mes === mes)
-      .reduce((sum, g) => sum + calcularCuotas(g.monto, g.cuotas).totalPagar, 0)
+      .reduce((sum, g) => sum + calcularCuotas(g.monto, g.cuotas, g.cuota_mensual).totalPagar, 0)
     const cierre = cierres[mes] || {}
     resumenData.push([
       mes,
@@ -34,7 +34,7 @@ export function exportarExcel(gastos, cierres, calcularCuotas) {
   ]
 
   gastos.forEach(g => {
-    const calc = calcularCuotas(g.monto, g.cuotas)
+    const calc = calcularCuotas(g.monto, g.cuotas, g.cuota_mensual)
     detalleData.push([
       g.mes,
       g.lugar,

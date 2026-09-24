@@ -10,17 +10,20 @@ const inputCls = "w-full mt-1.5 px-3.5 py-2.5 bg-white border border-border roun
 
 export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas, mesDefault }) {
   const [form, setForm] = useState({
-    lugar: '', fecha: '', monto: '', cuotas: '0',
+    lugar: '', fecha: '', monto: '', cuotas: '0', cuota_mensual: '',
     mes: mesDefault || 'ENERO', ...gasto
   })
 
-  const calc = calcularCuotas(parseFloat(form.monto) || 0, parseInt(form.cuotas) || 0)
+  const cuotas = parseInt(form.cuotas) || 0
+  const cuotaMensual = parseFloat(form.cuota_mensual) || 0
+  const calc = calcularCuotas(parseFloat(form.monto) || 0, cuotas, cuotaMensual)
 
   const handleSubmit = () => {
     if (!form.lugar.trim()) return toast.error('Ingresa el nombre del establecimiento')
     if (!form.fecha) return toast.error('Selecciona una fecha')
     if (!form.monto || parseFloat(form.monto) <= 0) return toast.error('Ingresa un monto válido')
-    onGuardar({ ...form, monto: parseFloat(form.monto), cuotas: parseInt(form.cuotas) })
+    if (cuotas > 0 && cuotaMensual < 0) return toast.error('Ingresa una cuota válida')
+    onGuardar({ ...form, monto: parseFloat(form.monto), cuotas, cuota_mensual: cuotaMensual || null })
     //toast.success(gasto?.id ? 'Gasto actualizado' : 'Gasto agregado')
     onCerrar()
   }
@@ -65,6 +68,16 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
               </select>
             </div>
           </div>
+
+          {cuotas > 0 && (
+            <div>
+              <label className="text-[11px] text-muted uppercase tracking-wider">Valor de cada cuota (opcional)</label>
+              <input type="number" step="0.01" min="0" value={form.cuota_mensual}
+                onChange={e => setForm(p => ({ ...p, cuota_mensual: e.target.value }))}
+                placeholder="Automático" className={inputCls} />
+              <p className="mt-1 text-xs text-muted">Si lo dejas vacío, se calcula automáticamente.</p>
+            </div>
+          )}
 
           {/* Monto + Cuotas */}
           <div className="grid grid-cols-2 gap-3">

@@ -155,7 +155,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
                 </thead>
                 <tbody>
                   {gastos.map(g => {
-                    const calc = calcularCuotas(g.monto, g.cuotas)
+                    const calc = calcularCuotas(g.monto, g.cuotas, g.cuota_mensual)
                     return (
                       <tr key={g.id} className="border-t border-border hover:bg-gray-100 transition-colors">
                         <td className="px-3 py-2.5 font-medium text-gray-600 max-w-40 overflow-hidden text-ellipsis whitespace-nowrap">{g.lugar}</td>

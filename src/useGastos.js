@@ -4,9 +4,17 @@ import { supabase } from './supabase'
 const ORDEN_MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
   'JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
 
-export function calcularCuotas(monto, cuotas) {
+export function calcularCuotas(monto, cuotas, cuotaMensual = 0) {
   const TASA = 0.0584
   if (cuotas === 0) return { cuotaMensual: 0, interes: 0, totalPagar: monto }
+  if (cuotaMensual > 0) {
+    const total = cuotaMensual * cuotas
+    return {
+      cuotaMensual,
+      interes: parseFloat((total - monto).toFixed(2)),
+      totalPagar: parseFloat(total.toFixed(2)),
+    }
+  }
   const interes = monto * TASA * cuotas
   const total = monto + interes
   return {
@@ -18,7 +26,7 @@ export function calcularCuotas(monto, cuotas) {
 
 export function cuotaParaMes(gasto, mesIndex) {
   if (gasto.cuotas === 0) return mesIndex === 0 ? gasto.monto : 0
-  const calc = calcularCuotas(gasto.monto, gasto.cuotas)
+  const calc = calcularCuotas(gasto.monto, gasto.cuotas, gasto.cuota_mensual)
   if (mesIndex >= 0 && mesIndex < gasto.cuotas) return calc.cuotaMensual
   return 0
 }
@@ -87,10 +95,10 @@ export function useGastos(userId) {
   }
 
   const editarGasto = async (id, datos) => {
-    const { lugar, fecha, monto, cuotas, mes } = datos
+    const { lugar, fecha, monto, cuotas, cuota_mensual, mes } = datos
     const { error } = await supabase
       .from('gastos')
-      .update({ lugar, fecha, monto, cuotas, mes })
+      .update({ lugar, fecha, monto, cuotas, cuota_mensual, mes })
       .eq('id', id)
     if (!error) setGastos(prev => prev.map(g => g.id === id ? { ...g, ...datos } : g))
   }
@@ -207,7 +215,7 @@ export function useGastos(userId) {
       return diff > 0 && diff < g.cuotas
     }).map(g => {
       const diff = idxMes - ORDEN_MESES.indexOf(g.mes)
-      const calc = calcularCuotas(g.monto, g.cuotas)
+      const calc = calcularCuotas(g.monto, g.cuotas, g.cuota_mensual)
       return { ...g, cuotaActual: diff + 1, cuotaMensual: calc.cuotaMensual }
     })
   }
