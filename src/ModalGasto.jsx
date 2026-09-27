@@ -6,26 +6,40 @@ import { toast } from 'react-toastify'
 const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
   'JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
 
+function obtenerMesFacturacion(fecha) {
+  if (!fecha) return null
+  const date = new Date(fecha + 'T00:00:00')
+  const dia = date.getDate()
+  const mesIndex = date.getMonth()
+  if (dia >= 25) {
+    const siguienteMes = mesIndex + 1
+    return siguienteMes > 11 ? MESES[0] : MESES[siguienteMes]
+  }
+  return MESES[mesIndex]
+}
+
 const inputCls = "w-full mt-1.5 px-3.5 py-2.5 bg-white border border-border rounded-lg text-gray-800 text-sm outline-none focus:border-accent transition-colors"
 
 export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas, mesDefault }) {
   const [form, setForm] = useState({
-    lugar: '', fecha: '', monto: '', cuotas: '0', cuota_mensual: '',
+    lugar: '', fecha: '', monto: '', cuotas: '0', cuota_mensual: '', cashback: '',
     mes: mesDefault || 'ENERO', ...gasto
   })
 
   const cuotas = parseInt(form.cuotas) || 0
   const cuotaMensual = parseFloat(form.cuota_mensual) || 0
+  const cashback = parseFloat(form.cashback) || 0
   const calc = calcularCuotas(parseFloat(form.monto) || 0, cuotas, cuotaMensual)
+  const primerMes = cuotas > 0 ? calc.cuotaMensual : parseFloat(form.monto) || 0
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.lugar.trim()) return toast.error('Ingresa el nombre del establecimiento')
     if (!form.fecha) return toast.error('Selecciona una fecha')
     if (!form.monto || parseFloat(form.monto) <= 0) return toast.error('Ingresa un monto válido')
     if (cuotas > 0 && cuotaMensual < 0) return toast.error('Ingresa una cuota válida')
-    onGuardar({ ...form, monto: parseFloat(form.monto), cuotas, cuota_mensual: cuotaMensual || null })
-    //toast.success(gasto?.id ? 'Gasto actualizado' : 'Gasto agregado')
-    onCerrar()
+    if (cashback < 0 || cashback > primerMes) return toast.error(`El cashback no puede superar ${primerMes.toFixed(2)}`)
+    const guardado = await onGuardar({ ...form, monto: parseFloat(form.monto), cuotas, cuota_mensual: cuotaMensual || null, cashback })
+    if (guardado !== false) onCerrar()
   }
 
   return (
@@ -56,7 +70,11 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
             <div>
               <label className="text-[11px] text-muted uppercase tracking-wider">Fecha</label>
               <input type="date" value={form.fecha}
-                onChange={e => setForm(p => ({ ...p, fecha: e.target.value }))}
+                onChange={e => {
+                  const fecha = e.target.value
+                  const mesAuto = obtenerMesFacturacion(fecha)
+                  setForm(p => ({ ...p, fecha, mes: mesAuto || p.mes }))
+                }}
                 className={inputCls} />
             </div>
             <div>
@@ -67,6 +85,14 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
                 {MESES.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] text-muted uppercase tracking-wider">Cashback aplicado este mes (opcional)</label>
+            <input type="number" step="0.01" min="0" value={form.cashback}
+              onChange={e => setForm(p => ({ ...p, cashback: e.target.value }))}
+              placeholder="0.00" className={inputCls} />
+            <p className="mt-1 text-xs text-muted">Se descuenta del total de este mes.</p>
           </div>
 
           {cuotas > 0 && (
@@ -104,7 +130,8 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
                   <span className="text-gray-600">Cuota/mes: <strong>S/.{calc.cuotaMensual.toFixed(2)}</strong></span>
                 )}
                 <span className="text-gray-600">Interés: <strong className={calc.interes > 0 ? 'text-warning' : 'text-muted'}>S/.{calc.interes.toFixed(2)}</strong></span>
-                <span className="text-gray-600">Total: <strong className="text-accent">S/.{calc.totalPagar.toFixed(2)}</strong></span>
+                {cashback > 0 && <span className="text-gray-600">Cashback: <strong className="text-success">-S/.{cashback.toFixed(2)}</strong></span>}
+                <span className="text-gray-600">Total: <strong className="text-accent">S/.{Math.max(0, calc.totalPagar - cashback).toFixed(2)}</strong></span>
               </div>
             </div>
           )}

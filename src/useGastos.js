@@ -25,9 +25,15 @@ export function calcularCuotas(monto, cuotas, cuotaMensual = 0) {
 }
 
 export function cuotaParaMes(gasto, mesIndex) {
-  if (gasto.cuotas === 0) return mesIndex === 0 ? gasto.monto : 0
-  const calc = calcularCuotas(gasto.monto, gasto.cuotas, gasto.cuota_mensual)
-  if (mesIndex >= 0 && mesIndex < gasto.cuotas) return calc.cuotaMensual
+  const cuotas = Number(gasto.cuotas) || 0
+  const cashback = Number(gasto.cashback) || 0
+  if (cuotas === 0) return mesIndex === 0 ? Math.max(0, Number(gasto.monto) - cashback) : 0
+  const calc = calcularCuotas(Number(gasto.monto), cuotas, Number(gasto.cuota_mensual) || 0)
+  if (mesIndex >= 0 && mesIndex < cuotas) {
+    return mesIndex === 0
+      ? Math.max(0, calc.cuotaMensual - cashback)
+      : calc.cuotaMensual
+  }
   return 0
 }
 
@@ -37,14 +43,44 @@ export function useGastos(userId) {
   const [lineaCredito, setLineaCreditoState] = useState(1200)
   const [cargando, setCargando] = useState(true)
 
-  useEffect(() => {
-    if (!userId) return
-    cargarTodo()
-  }, [userId])
+  async function crearCierreDefault(mes) {
+    const idx = ORDEN_MESES.indexOf(mes)
+    const year = new Date().getFullYear()
+    const cierreDate = `${year}-${String(idx + 1).padStart(2, '0')}-25`
+    const pagoMonth = idx + 2 > 12 ? 1 : idx + 2
+    const pagoYear = idx + 2 > 12 ? year + 1 : year
+    const pagoDate = `${pagoYear}-${String(pagoMonth).padStart(2, '0')}-12`
+
+    const { data, error } = await supabase
+      .from('cierres')
+      .insert({ user_id: userId, mes, fecha_cierre: cierreDate, fecha_pago: pagoDate, pagado: false })
+      .select()
+      .single()
+    if (!error) {
+      setCierres(prev => ({
+        ...prev,
+        [mes]: { cierre: data.fecha_cierre, pago: data.fecha_pago, pagado: false, id: data.id }
+      }))
+    }
+  }
+
+  async function crearCierresFaltantes() {
+    const [gastosRes, cierresRes] = await Promise.all([
+      supabase.from('gastos').select('mes'),
+      supabase.from('cierres').select('mes'),
+    ])
+    const mesesConGastos = [...new Set((gastosRes.data || []).map(g => g.mes))]
+    const mesesConCierre = new Set((cierresRes.data || []).map(c => c.mes))
+    const mesesFaltantes = mesesConGastos.filter(m => !mesesConCierre.has(m))
+    for (const mes of mesesFaltantes) {
+      await crearCierreDefault(mes)
+    }
+  }
 
   async function cargarTodo() {
     setCargando(true)
     await Promise.all([cargarGastos(), cargarCierres(), cargarConfig()])
+    await crearCierresFaltantes()
     setCargando(false)
   }
 
@@ -82,25 +118,39 @@ export function useGastos(userId) {
     if (data) setLineaCreditoState(data.linea_credito)
   }
 
+  useEffect(() => {
+    if (!userId) return
+    Promise.resolve().then(() => cargarTodo())
+  }, [userId])
+
   const agregarGasto = async (gasto) => {
+    const datos = { ...gasto, user_id: userId }
+    if (gasto.cuota_mensual == null) delete datos.cuota_mensual
+
     const { data, error } = await supabase
       .from('gastos')
-      .insert({ ...gasto, user_id: userId })
+    .insert(datos)
       .select()
       .single()
-    if (!error) setGastos(prev => [...prev, data])
+    if (error) return { error }
+
+    setGastos(prev => [...prev, data])
     if (!cierres[gasto.mes]) {
       await crearCierreDefault(gasto.mes)
     }
+    return { error: null }
   }
 
   const editarGasto = async (id, datos) => {
-    const { lugar, fecha, monto, cuotas, cuota_mensual, mes } = datos
+    const { lugar, fecha, monto, cuotas, cuota_mensual, cashback, mes } = datos
+    const cambios = { lugar, fecha, monto, cuotas, cashback, mes }
+    if (cuota_mensual != null) cambios.cuota_mensual = cuota_mensual
     const { error } = await supabase
       .from('gastos')
-      .update({ lugar, fecha, monto, cuotas, cuota_mensual, mes })
+      .update(cambios)
       .eq('id', id)
     if (!error) setGastos(prev => prev.map(g => g.id === id ? { ...g, ...datos } : g))
+    return { error }
   }
 
   const eliminarGasto = async (id) => {
@@ -139,38 +189,23 @@ export function useGastos(userId) {
     return { error: null }
   }
 
-  async function crearCierreDefault(mes) {
-    const idx = ORDEN_MESES.indexOf(mes)
-    const year = 2026
-    const cierreDate = `${year}-${String(idx + 1).padStart(2, '0')}-25`
-    const pagoMonth = idx + 2 > 12 ? 1 : idx + 2
-    const pagoYear = idx + 2 > 12 ? year + 1 : year
-    const pagoDate = `${pagoYear}-${String(pagoMonth).padStart(2, '0')}-12`
-
-    const { data, error } = await supabase
-      .from('cierres')
-      .insert({ user_id: userId, mes, fecha_cierre: cierreDate, fecha_pago: pagoDate, pagado: false })
-      .select()
-      .single()
-    if (!error) {
-      setCierres(prev => ({
-        ...prev,
-        [mes]: { cierre: data.fecha_cierre, pago: data.fecha_pago, pagado: false, id: data.id }
-      }))
-    }
-  }
-
   const marcarPagado = async (mes) => {
     const cierre = cierres[mes]
-    if (!cierre) return
+    if (!cierre) {
+      console.error('No existe cierre para:', mes, 'cierres disponibles:', Object.keys(cierres))
+      return { error: new Error('No existe cierre para este mes') }
+    }
     const nuevoPagado = !cierre.pagado
     const { error } = await supabase
       .from('cierres')
       .update({ pagado: nuevoPagado })
       .eq('id', cierre.id)
-    if (!error) {
-      setCierres(prev => ({ ...prev, [mes]: { ...prev[mes], pagado: nuevoPagado } }))
+    if (error) {
+      console.error('Error Supabase:', error.message, error.code, error.details, 'cierre.id:', cierre.id)
+      return { error }
     }
+    setCierres(prev => ({ ...prev, [mes]: { ...prev[mes], pagado: nuevoPagado } }))
+    return { error: null }
   }
 
   const actualizarCierre = async (mes, datos) => {
@@ -231,14 +266,16 @@ export function useGastos(userId) {
     return [...set].filter(mes => !cierres[mes]?.pagado)
   }
 
-  const deudaPendiente = parseFloat(
+  const deudaBruta = parseFloat(
     mesesConDeuda().reduce((sum, mes) => sum + totalPagarMes(mes), 0).toFixed(2)
   )
+
+  const deudaPendiente = deudaBruta
 
   const disponible = parseFloat((lineaCredito - deudaPendiente).toFixed(2))
 
   const alertas = Object.entries(cierres)
-    .filter(([_, c]) => !c.pagado)
+    .filter(([, c]) => !c.pagado)
     .map(([mes, c]) => ({ mes, ...c }))
 
   return {

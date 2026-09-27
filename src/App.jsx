@@ -3,13 +3,41 @@ import { useGastos, calcularCuotas } from './useGastos'
 import { useAuth } from './useAuth'
 import { exportarExcel } from './exportar'
 import ModalGasto from './ModalGasto'
-import { ChevronDown, ChevronRight, Download, Goal, LogOut, Pencil, Plus, RotateCcw, Trash, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, Clock, Download, Goal, LogOut, Pencil, Plus, RotateCcw, Trash, TriangleAlert } from 'lucide-react'
 
 import { AnimatePresence, motion } from 'framer-motion'
 
 import { toast } from 'react-toastify'
 
 const fmt = n => `S/.${parseFloat(n).toFixed(2)}`
+const fmtFecha = f => { const [a, m, d] = f.split('-'); return `${d}/${m}/${a}` }
+const MotionDiv = motion.div
+
+function calcularDiasRestantes() {
+  const hoy = new Date()
+  const dia = hoy.getDate()
+  const mes = hoy.getMonth()
+  const year = hoy.getFullYear()
+
+  let diasParaCierre
+  if (dia < 25) {
+    diasParaCierre = 25 - dia
+  } else {
+    diasParaCierre = (new Date(year, mes + 1, 25) - hoy) / (1000 * 60 * 60 * 24)
+  }
+
+  let diasParaPago
+  if (dia < 12) {
+    diasParaPago = 12 - dia
+  } else {
+    diasParaPago = (new Date(year, mes + 1, 12) - hoy) / (1000 * 60 * 60 * 24)
+  }
+
+  return {
+    cierre: Math.ceil(diasParaCierre),
+    pago: Math.ceil(diasParaPago)
+  }
+}
 
 // ── Modal Confirmar ───────────────────────────────────────────────────────────
 function ModalConfirmar({ titulo, mensaje, labelConfirmar = 'Confirmar', onConfirmar, onCerrar }) {
@@ -120,7 +148,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
 
       <AnimatePresence initial={false}>
         {expandido && (
-          <motion.div
+          <MotionDiv
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -148,7 +176,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
               <table className="w-full border-collapse text-[13px]" style={{ minWidth: 560 }}>
                 <thead>
                   <tr className="bg-white">
-                    {['LUGAR', 'FECHA', 'MONTO', 'CUOTAS', 'CUOTA/MES', 'INTERÉS', 'TOTAL', ''].map(h => (
+                    {['LUGAR', 'FECHA', 'MONTO', 'CUOTAS', 'CUOTA/MES', 'INTERÉS', 'CASHBACK', 'TOTAL', ''].map(h => (
                       <th key={h} className="px-3 py-2.5 text-left text-muted font-medium text-[11px] tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -159,7 +187,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
                     return (
                       <tr key={g.id} className="border-t border-border hover:bg-gray-100 transition-colors">
                         <td className="px-3 py-2.5 font-medium text-gray-600 max-w-40 overflow-hidden text-ellipsis whitespace-nowrap">{g.lugar}</td>
-                        <td className="px-3 py-2.5 text-muted text-xs whitespace-nowrap">{g.fecha}</td>
+                        <td className="px-3 py-2.5 text-muted text-xs whitespace-nowrap">{fmtFecha(g.fecha)}</td>
                         <td className="px-3 py-2.5 text-black whitespace-nowrap">{fmt(g.monto)}</td>
                         <td className="px-3 py-2.5 text-center">
                           {g.cuotas > 0
@@ -172,7 +200,10 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
                         <td className={`px-3 py-2.5 whitespace-nowrap ${calc.interes > 0 ? 'text-warning' : 'text-muted'}`}>
                           {calc.interes > 0 ? fmt(calc.interes) : '—'}
                         </td>
-                        <td className="px-3 py-2.5 font-semibold text-accent whitespace-nowrap">{fmt(calc.totalPagar)}</td>
+                        <td className="px-3 py-2.5 text-success whitespace-nowrap">
+                          {Number(g.cashback) > 0 ? `-${fmt(g.cashback)}` : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 font-semibold text-accent whitespace-nowrap">{fmt(Math.max(0, calc.totalPagar - Number(g.cashback || 0)))}</td>
                         <td className="px-2 py-2.5">
                           {!esPagado ? (
                             <div className="flex gap-1.5">
@@ -202,7 +233,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
                   <Plus size={14} /> Agregar
                 </button>
                 <button
-                  onClick={() => { onMarcarPagado(mes); toast[!esPagado ? 'success' : 'default'](`Mes ${mes} ${!esPagado ? 'pagado' : 'pendiente'}`) }}
+                  onClick={async () => { const { error } = await onMarcarPagado(mes); if (error) return toast.error('No se pudo actualizar'); toast[!esPagado ? 'success' : 'default'](`Mes ${mes} ${!esPagado ? 'pagado' : 'pendiente'}`) }}
                   className={`px-3.5 py-1.5 rounded-lg text-sm border cursor-pointer font-sans transition-colors
               ${esPagado ? 'bg-success text-white' : 'bg-transparent border-border text-muted'}`}>
                   {esPagado ? 'Pagado' : 'Marcar pagado'}
@@ -210,7 +241,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
               </div>
               <span className="text-sm font-semibold text-accent whitespace-nowrap">Total: {fmt(total)}</span>
             </div>
-          </motion.div>
+          </MotionDiv>
         )}
       </AnimatePresence>
 
@@ -227,7 +258,8 @@ export default function App({ usuario }) {
     lineaCredito, setLineaCredito,
     disponible, deudaPendiente,
     gastosPorMes, totalPagarMes, cuotasPendientesEnMes,
-    alertas, agregarGasto, editarGasto, eliminarGasto, marcarPagado, resetearTodo,
+    alertas, agregarGasto, editarGasto, eliminarGasto,
+    marcarPagado, resetearTodo,
   } = useGastos(usuario.id)
 
   const [modal, setModal] = useState(null)
@@ -235,11 +267,22 @@ export default function App({ usuario }) {
   const [confirmar, setConfirmar] = useState(null)
 
   const handleGuardar = async (datos) => {
-    if (datos.id) { await editarGasto(datos.id, datos); toast.success('Gasto actualizado') }
-    else { await agregarGasto(datos); toast.success('Gasto agregado') }
+    const resultado = datos.id
+      ? await editarGasto(datos.id, datos)
+      : await agregarGasto(datos)
+
+    if (resultado?.error) {
+      toast.error(`No se pudo guardar el gasto: ${resultado.error.message}`)
+      return false
+    }
+
+    toast.success(datos.id ? 'Gasto actualizado' : 'Gasto agregado')
+    return true
   }
 
+
   const totalGeneral = meses.reduce((sum, mes) => sum + totalPagarMes(mes), 0)
+  const dias = calcularDiasRestantes()
 
   if (cargando) {
     return (
@@ -299,6 +342,30 @@ export default function App({ usuario }) {
 
         <BarraCredito lineaCredito={lineaCredito} deudaPendiente={deudaPendiente} disponible={disponible} onEditar={() => setModalLinea(true)} />
 
+        {/* Días restantes */}
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3 mb-5">
+          <div className="bg-white border border-gray-400 rounded-2xl p-5">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock size={16} className={dias.cierre <= 5 ? 'text-danger' : dias.cierre <= 15 ? 'text-warning' : 'text-success'} />
+              <span className="text-[11px] text-muted uppercase tracking-wider">Próximo cierre</span>
+            </div>
+            <span className={`text-2xl font-medium ${dias.cierre <= 5 ? 'text-danger' : dias.cierre <= 15 ? 'text-warning' : 'text-success'}`}>
+              {dias.cierre} día{dias.cierre !== 1 ? 's' : ''}
+            </span>
+            <p className="text-xs text-muted m-0 mt-1">Fecha: 25/{new Date().getMonth() + 1 < 10 ? '0' : ''}{new Date().getMonth() + 1}/{new Date().getFullYear()}</p>
+          </div>
+          <div className="bg-white border border-gray-400 rounded-2xl p-5">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock size={16} className={dias.pago <= 5 ? 'text-danger' : dias.pago <= 15 ? 'text-accent' : 'text-success'} />
+              <span className="text-[11px] text-muted uppercase tracking-wider">Próximo pago</span>
+            </div>
+            <span className={`text-2xl font-medium ${dias.pago <= 5 ? 'text-danger' : dias.pago <= 15 ? 'text-accent' : 'text-success'}`}>
+              {dias.pago} día{dias.pago !== 1 ? 's' : ''}
+            </span>
+            <p className="text-xs text-muted m-0 mt-1">Fecha: 12/{new Date().getMonth() + 2 > 12 ? '01' : (new Date().getMonth() + 2 < 10 ? '0' : '') + (new Date().getMonth() + 2)}/{new Date().getMonth() + 2 > 12 ? new Date().getFullYear() + 1 : new Date().getFullYear()}</p>
+          </div>
+        </div>
+
         {/* Alertas */}
         {alertas.map(a => (
           <div key={a.mes} className="flex items-center justify-between flex-wrap gap-2.5 bg-warning rounded-xl px-4 py-3 mb-2.5">
@@ -309,7 +376,7 @@ export default function App({ usuario }) {
                 <p className="m-0 mt-0.5 text-white text-xs">Fecha: <strong>{a.pago}</strong> · <strong>{fmt(totalPagarMes(a.mes))}</strong></p>
               </div>
             </div>
-            <button onClick={() => { marcarPagado(a.mes); toast.success(`Mes ${a.mes} marcado como pagado`) }}
+            <button onClick={async () => { const { error } = await marcarPagado(a.mes); if (error) return toast.error('No se pudo actualizar'); toast.success(`Mes ${a.mes} marcado como pagado`) }}
               className="bg-success border border-success rounded-lg px-3.5 py-1.5 text-white cursor-pointer text-xs whitespace-nowrap font-sans">
               Marcar pagado
             </button>

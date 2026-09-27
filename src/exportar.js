@@ -13,7 +13,7 @@ export function exportarExcel(gastos, cierres, calcularCuotas) {
   meses.forEach(mes => {
     const total = gastos
       .filter(g => g.mes === mes)
-      .reduce((sum, g) => sum + calcularCuotas(g.monto, g.cuotas, g.cuota_mensual).totalPagar, 0)
+      .reduce((sum, g) => sum + Math.max(0, calcularCuotas(g.monto, g.cuotas, g.cuota_mensual).totalPagar - Number(g.cashback || 0)), 0)
     const cierre = cierres[mes] || {}
     resumenData.push([
       mes,
@@ -30,7 +30,7 @@ export function exportarExcel(gastos, cierres, calcularCuotas) {
 
   // Hoja detalle
   const detalleData = [
-    ['MES', 'LUGAR', 'FECHA', 'MONTO', 'CUOTAS', 'CUOTA MENSUAL', 'INTERÉS', 'TOTAL A PAGAR'],
+    ['MES', 'LUGAR', 'FECHA', 'MONTO', 'CUOTAS', 'CUOTA MENSUAL', 'INTERÉS', 'CASHBACK', 'TOTAL A PAGAR'],
   ]
 
   gastos.forEach(g => {
@@ -43,14 +43,15 @@ export function exportarExcel(gastos, cierres, calcularCuotas) {
       g.cuotas,
       calc.cuotaMensual,
       calc.interes,
-      calc.totalPagar,
+      g.cashback || 0,
+      Math.max(0, calc.totalPagar - Number(g.cashback || 0)),
     ])
   })
 
   const wsDetalle = XLSX.utils.aoa_to_sheet(detalleData)
   wsDetalle['!cols'] = [
     { wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 10 },
-    { wch: 8 }, { wch: 15 }, { wch: 12 }, { wch: 14 },
+    { wch: 8 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 14 },
   ]
   XLSX.utils.book_append_sheet(wb, wsDetalle, 'Detalle')
 
