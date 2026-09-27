@@ -124,7 +124,7 @@ function ModalLineaCredito({ valor, onGuardar, onCerrar }) {
 
 // ── Tarjeta de mes ────────────────────────────────────────────────────────────
 function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes, onMarcarPagado, onEditar, onEliminar, onAgregar }) {
-  const [expandido, setExpandido] = useState(true)
+  const [expandido, setExpandido] = useState(false)
   const total = totalPagarMes(mes)
   const esPagado = cierre?.pagado
   const cuotasExternas = cuotasPendientesEnMes(mes)
@@ -184,6 +184,34 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
                 <tbody>
                   {gastos.map(g => {
                     const calc = calcularCuotas(g.monto, g.cuotas, g.cuota_mensual)
+                    if (g.es_abono) {
+                      return (
+                        <tr key={g.id} className="border-t border-border hover:bg-gray-100 transition-colors">
+                          <td className="px-3 py-2.5 font-medium text-gray-600 max-w-40 overflow-hidden text-ellipsis whitespace-nowrap">
+                            <span className="flex items-center gap-1.5">{g.lugar}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-muted text-xs whitespace-nowrap">{fmtFecha(g.fecha)}</td>
+                          <td className="px-3 py-2.5 text-success font-semibold whitespace-nowrap">-{fmt(g.monto)}</td>
+                          <td className="px-3 py-2.5 text-center"><span className="bg-success text-white px-2 py-0.5 rounded text-xs">ABONO</span></td>
+                          <td className="px-3 py-2.5 text-muted">—</td>
+                          <td className="px-3 py-2.5 text-muted">—</td>
+                          <td className="px-3 py-2.5 text-muted">—</td>
+                          <td className="px-3 py-2.5 font-semibold text-success whitespace-nowrap">-{fmt(g.monto)}</td>
+                          <td className="px-2 py-2.5">
+                            {!esPagado ? (
+                              <div className="flex gap-1.5">
+                                <button onClick={() => onEditar(g)} className="px-2.5 py-1 text-muted cursor-pointer text-xs">
+                                  <Pencil size={14} />
+                                </button>
+                                <button onClick={() => onEliminar(g)} className="px-2.5 py-1 text-danger cursor-pointer text-xs">
+                                  <Trash size={14} />
+                                </button>
+                              </div>
+                            ) : <span className="text-[11px] text-muted">—</span>}
+                          </td>
+                        </tr>
+                      )
+                    }
                     return (
                       <tr key={g.id} className="border-t border-border hover:bg-gray-100 transition-colors">
                         <td className="px-3 py-2.5 font-medium text-gray-600 max-w-40 overflow-hidden text-ellipsis whitespace-nowrap">{g.lugar}</td>
@@ -251,7 +279,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
 }
 
 // ── App ───────────────────────────────────────────────────────────────────────
-export default function App({ usuario }) {
+export default function App({ usuario, lineaActiva, onVolver }) {
   const { cerrarSesion } = useAuth()
   const {
     gastos, cierres, meses, cargando,
@@ -260,7 +288,7 @@ export default function App({ usuario }) {
     gastosPorMes, totalPagarMes, cuotasPendientesEnMes,
     alertas, agregarGasto, editarGasto, eliminarGasto,
     marcarPagado, resetearTodo,
-  } = useGastos(usuario.id)
+  } = useGastos(usuario.id, lineaActiva.id)
 
   const [modal, setModal] = useState(null)
   const [modalLinea, setModalLinea] = useState(false)
@@ -304,7 +332,7 @@ export default function App({ usuario }) {
       <div className=" bg-white px-4">
         <div className="max-w-5xl mx-auto py-3.5 flex justify-between items-center gap-3 flex-wrap">
           <div>
-            <h1 className="text-lg font-bold text-accent tracking-[3px] m-0">CONTROL DE GASTOS</h1>
+            <h1 className="text-lg font-bold text-accent tracking-[3px] m-0">{lineaActiva.nombre}</h1>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-gray-500 hidden sm:block">{usuario.email}</span>
@@ -317,6 +345,10 @@ export default function App({ usuario }) {
             <button onClick={() => setModal({ gasto: null, mesDefault: meses[meses.length - 1] || 'ENERO' })}
               className="flex items-center gap-1.5 px-4 py-2 bg-accent rounded-xl text-white text-sm font-semibold cursor-pointer whitespace-nowrap font-sans hover:opacity-90">
               <Plus size={14} /> Nuevo gasto
+            </button>
+            <button onClick={onVolver}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-transparent border border-border rounded-xl text-muted text-sm cursor-pointer whitespace-nowrap font-sans hover:opacity-90">
+              ← Volver
             </button>
             <button onClick={async () => { await cerrarSesion(); toast.success('Sesión cerrada') }}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-transparent border border-border rounded-xl text-muted text-sm cursor-pointer whitespace-nowrap font-sans hover:opacity-90">
@@ -432,9 +464,9 @@ export default function App({ usuario }) {
       )}
       {confirmar && (
         <ModalConfirmar
-          titulo={confirmar.tipo === 'reset' ? 'Resetear todos los datos' : 'Eliminar gasto'}
+          titulo={confirmar.tipo === 'reset' ? `Resetear datos de ${lineaActiva.nombre}` : 'Eliminar gasto'}
           mensaje={confirmar.tipo === 'reset'
-            ? 'Se eliminarán todos tus gastos y cierres, y la línea de crédito volverá a S/.1200. Esta acción no se puede deshacer.'
+            ? `Se eliminarán todos los gastos y cierres de "${lineaActiva.nombre}", y el límite volverá a S/.1200. Esta acción no se puede deshacer.`
             : `¿Seguro que quieres eliminar "${confirmar.lugar}" (${fmt(confirmar.monto)})? Esta acción no se puede deshacer.`}
           labelConfirmar={confirmar.tipo === 'reset' ? 'Sí, resetear todo' : 'Sí, eliminar'}
           onConfirmar={async () => {

@@ -5,7 +5,6 @@ const ORDEN_MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
   'JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
 
 export function calcularCuotas(monto, cuotas, cuotaMensual = 0) {
-  const TASA = 0.0584
   if (cuotas === 0) return { cuotaMensual: 0, interes: 0, totalPagar: monto }
   if (cuotaMensual > 0) {
     const total = cuotaMensual * cuotas
@@ -15,13 +14,7 @@ export function calcularCuotas(monto, cuotas, cuotaMensual = 0) {
       totalPagar: parseFloat(total.toFixed(2)),
     }
   }
-  const interes = monto * TASA * cuotas
-  const total = monto + interes
-  return {
-    cuotaMensual: parseFloat((total / cuotas).toFixed(2)),
-    interes: parseFloat(interes.toFixed(2)),
-    totalPagar: parseFloat(total.toFixed(2)),
-  }
+  return { cuotaMensual: 0, interes: 0, totalPagar: monto }
 }
 
 export function cuotaParaMes(gasto, mesIndex) {
@@ -37,7 +30,7 @@ export function cuotaParaMes(gasto, mesIndex) {
   return 0
 }
 
-export function useGastos(userId) {
+export function useGastos(userId, lineaCreditoId) {
   const [gastos, setGastos] = useState([])
   const [cierres, setCierres] = useState({})
   const [lineaCredito, setLineaCreditoState] = useState(1200)
@@ -53,7 +46,7 @@ export function useGastos(userId) {
 
     const { data, error } = await supabase
       .from('cierres')
-      .insert({ user_id: userId, mes, fecha_cierre: cierreDate, fecha_pago: pagoDate, pagado: false })
+      .insert({ user_id: userId, linea_credito_id: lineaCreditoId, mes, fecha_cierre: cierreDate, fecha_pago: pagoDate, pagado: false })
       .select()
       .single()
     if (!error) {
@@ -66,8 +59,8 @@ export function useGastos(userId) {
 
   async function crearCierresFaltantes() {
     const [gastosRes, cierresRes] = await Promise.all([
-      supabase.from('gastos').select('mes'),
-      supabase.from('cierres').select('mes'),
+      supabase.from('gastos').select('mes').eq('linea_credito_id', lineaCreditoId),
+      supabase.from('cierres').select('mes').eq('linea_credito_id', lineaCreditoId),
     ])
     const mesesConGastos = [...new Set((gastosRes.data || []).map(g => g.mes))]
     const mesesConCierre = new Set((cierresRes.data || []).map(c => c.mes))
@@ -79,7 +72,7 @@ export function useGastos(userId) {
 
   async function cargarTodo() {
     setCargando(true)
-    await Promise.all([cargarGastos(), cargarCierres(), cargarConfig()])
+    await Promise.all([cargarGastos(), cargarCierres(), cargarLineaCredito()])
     await crearCierresFaltantes()
     setCargando(false)
   }
@@ -88,6 +81,7 @@ export function useGastos(userId) {
     const { data, error } = await supabase
       .from('gastos')
       .select('*')
+      .eq('linea_credito_id', lineaCreditoId)
       .order('fecha', { ascending: true })
     if (!error) setGastos(data || [])
   }
@@ -96,6 +90,7 @@ export function useGastos(userId) {
     const { data, error } = await supabase
       .from('cierres')
       .select('*')
+      .eq('linea_credito_id', lineaCreditoId)
     if (!error) {
       const mapa = {}
       ;(data || []).forEach(c => {
@@ -110,21 +105,22 @@ export function useGastos(userId) {
     }
   }
 
-  async function cargarConfig() {
+  async function cargarLineaCredito() {
     const { data } = await supabase
-      .from('configuracion')
-      .select('linea_credito')
+      .from('lineas_credito')
+      .select('limite')
+      .eq('id', lineaCreditoId)
       .single()
-    if (data) setLineaCreditoState(data.linea_credito)
+    if (data) setLineaCreditoState(data.limite)
   }
 
   useEffect(() => {
-    if (!userId) return
+    if (!userId || !lineaCreditoId) return
     Promise.resolve().then(() => cargarTodo())
-  }, [userId])
+  }, [userId, lineaCreditoId])
 
   const agregarGasto = async (gasto) => {
-    const datos = { ...gasto, user_id: userId }
+    const datos = { ...gasto, user_id: userId, linea_credito_id: lineaCreditoId }
     if (gasto.cuota_mensual == null) delete datos.cuota_mensual
 
     const { data, error } = await supabase
@@ -142,8 +138,8 @@ export function useGastos(userId) {
   }
 
   const editarGasto = async (id, datos) => {
-    const { lugar, fecha, monto, cuotas, cuota_mensual, cashback, mes } = datos
-    const cambios = { lugar, fecha, monto, cuotas, cashback, mes }
+    const { lugar, fecha, monto, cuotas, cuota_mensual, cashback, mes, es_abono } = datos
+    const cambios = { lugar, fecha, monto, cuotas, cashback, mes, es_abono }
     if (cuota_mensual != null) cambios.cuota_mensual = cuota_mensual
     const { error } = await supabase
       .from('gastos')
@@ -174,13 +170,12 @@ export function useGastos(userId) {
 }
 
   const resetearTodo = async () => {
-    const [gastosResult, cierresResult, configResult] = await Promise.all([
-      supabase.from('gastos').delete().eq('user_id', userId),
-      supabase.from('cierres').delete().eq('user_id', userId),
-      supabase.from('configuracion').delete().eq('user_id', userId),
+    const [gastosResult, cierresResult] = await Promise.all([
+      supabase.from('gastos').delete().eq('linea_credito_id', lineaCreditoId),
+      supabase.from('cierres').delete().eq('linea_credito_id', lineaCreditoId),
     ])
 
-    const error = gastosResult.error || cierresResult.error || configResult.error
+    const error = gastosResult.error || cierresResult.error
     if (error) return { error }
 
     setGastos([])
@@ -223,8 +218,9 @@ export function useGastos(userId) {
   const setLineaCredito = async (valor) => {
     setLineaCreditoState(valor)
     await supabase
-      .from('configuracion')
-      .upsert({ user_id: userId, linea_credito: valor }, { onConflict: 'user_id' })
+      .from('lineas_credito')
+      .update({ limite: valor })
+      .eq('id', lineaCreditoId)
   }
 
   const meses = [...new Set(gastos.map(g => g.mes))].sort(
@@ -233,14 +229,19 @@ export function useGastos(userId) {
 
   const gastosPorMes = (mes) => gastos.filter(g => g.mes === mes)
 
+  const abonosDelMes = (mes) => gastos
+    .filter(g => g.mes === mes && g.es_abono)
+    .reduce((sum, g) => sum + Number(g.monto), 0)
+
   const totalPagarMes = (mes) => {
     const idxMes = ORDEN_MESES.indexOf(mes)
     let total = 0
     gastos.forEach(g => {
+      if (g.es_abono) return
       const diff = idxMes - ORDEN_MESES.indexOf(g.mes)
       if (diff >= 0) total += cuotaParaMes(g, diff)
     })
-    return parseFloat(total.toFixed(2))
+    return parseFloat((total - abonosDelMes(mes)).toFixed(2))
   }
 
   const cuotasPendientesEnMes = (mes) => {
@@ -282,7 +283,7 @@ export function useGastos(userId) {
     gastos, cierres, meses, cargando,
     lineaCredito, setLineaCredito,
     disponible, deudaPendiente,
-    gastosPorMes, totalPagarMes, cuotasPendientesEnMes,
+    gastosPorMes, abonosDelMes, totalPagarMes, cuotasPendientesEnMes,
     alertas, agregarGasto, editarGasto, eliminarGasto,
     marcarPagado, actualizarCierre, resetearTodo,
   }
