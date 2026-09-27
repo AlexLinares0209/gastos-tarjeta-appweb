@@ -3,7 +3,7 @@ import { useGastos, calcularCuotas } from './useGastos'
 import { useAuth } from './useAuth'
 import { exportarExcel } from './exportar'
 import ModalGasto from './ModalGasto'
-import { ChevronDown, ChevronRight, Clock, Download, Goal, LogOut, Pencil, Plus, RotateCcw, Trash, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, Clock, Download, Goal, LogOut, Pencil, Plus, RotateCcw, Trash, TriangleAlert, ArrowLeft } from 'lucide-react'
 
 import { AnimatePresence, motion } from 'framer-motion'
 
@@ -138,7 +138,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
         <div className="flex items-center gap-2.5 flex-wrap">
           <span className=" text-[13px] text-accent tracking-[2px]">{mes}</span>
           <Badge pagado={esPagado} />
-          {cierre?.pago && <span className="text-xs text-muted">Pago: <span className="text-gray-600">{cierre.pago}</span></span>}
+          {cierre?.pago && <span className="text-xs text-muted">Pago: <span className="text-gray-600">{fmtFecha(cierre.pago)}</span></span>}
         </div>
         <div className="flex items-center gap-2.5">
           <span className={` text-[15px] ${esPagado ? 'text-success' : 'text-accent'}`}>{fmt(total)}</span>
@@ -348,7 +348,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
             </button>
             <button onClick={onVolver}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-transparent border border-border rounded-xl text-muted text-sm cursor-pointer whitespace-nowrap font-sans hover:opacity-90">
-              ← Volver
+              <ArrowLeft size={14} /> Volver
             </button>
             <button onClick={async () => { await cerrarSesion(); toast.success('Sesión cerrada') }}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-transparent border border-border rounded-xl text-muted text-sm cursor-pointer whitespace-nowrap font-sans hover:opacity-90">
