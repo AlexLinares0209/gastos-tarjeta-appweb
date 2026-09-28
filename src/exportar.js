@@ -30,7 +30,7 @@ export function exportarExcel(gastos, cierres, calcularCuotas) {
 
   // Hoja detalle
   const detalleData = [
-    ['MES', 'LUGAR', 'FECHA', 'MONTO', 'CUOTAS', 'CUOTA MENSUAL', 'INTERÉS', 'CASHBACK', 'TOTAL A PAGAR'],
+    ['MES', 'LUGAR', 'CATEGORÍA', 'FECHA', 'MONTO', 'CUOTAS', 'CUOTA MENSUAL', 'INTERÉS', 'CASHBACK', 'TOTAL A PAGAR'],
   ]
 
   gastos.forEach(g => {
@@ -38,6 +38,7 @@ export function exportarExcel(gastos, cierres, calcularCuotas) {
     detalleData.push([
       g.mes,
       g.lugar,
+      g.categoria || 'Sin categoría',
       g.fecha,
       g.monto,
       g.cuotas,
@@ -50,7 +51,7 @@ export function exportarExcel(gastos, cierres, calcularCuotas) {
 
   const wsDetalle = XLSX.utils.aoa_to_sheet(detalleData)
   wsDetalle['!cols'] = [
-    { wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 10 },
+    { wch: 12 }, { wch: 30 }, { wch: 20 }, { wch: 12 }, { wch: 10 },
     { wch: 8 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 14 },
   ]
   XLSX.utils.book_append_sheet(wb, wsDetalle, 'Detalle')

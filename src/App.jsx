@@ -3,7 +3,7 @@ import { useGastos, calcularCuotas } from './useGastos'
 import { useAuth } from './useAuth'
 import { exportarExcel } from './exportar'
 import ModalGasto from './ModalGasto'
-import { ChevronDown, ChevronRight, Clock, Download, Goal, LogOut, Pencil, Plus, RotateCcw, Trash, TriangleAlert, ArrowLeft } from 'lucide-react'
+import { CalendarClock, ChevronDown, ChevronRight, Clock, Download, Eye, Goal, LogOut, Pencil, Plus, RotateCcw, Trash, TriangleAlert, ArrowLeft, X } from 'lucide-react'
 
 import { AnimatePresence, motion } from 'framer-motion'
 
@@ -12,30 +12,41 @@ import { toast } from 'react-toastify'
 const fmt = n => `S/.${parseFloat(n).toFixed(2)}`
 const fmtFecha = f => { const [a, m, d] = f.split('-'); return `${d}/${m}/${a}` }
 const MotionDiv = motion.div
+const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
 
-function calcularDiasRestantes() {
+function calcularDiasRestantes(cierres) {
   const hoy = new Date()
   const dia = hoy.getDate()
   const mes = hoy.getMonth()
   const year = hoy.getFullYear()
 
-  let diasParaCierre
-  if (dia < 25) {
-    diasParaCierre = 25 - dia
+  const fechaHoy = new Date(year, mes, dia)
+  const cierreCalendario = dia < 25 ? new Date(year, mes, 25) : new Date(year, mes + 1, 25)
+  let pagoCalendario
+  if (dia < 12) {
+    pagoCalendario = new Date(year, mes, 12)
+  } else if (dia < 25) {
+    pagoCalendario = new Date(year, mes + 1, 12)
   } else {
-    diasParaCierre = (new Date(year, mes + 1, 25) - hoy) / (1000 * 60 * 60 * 24)
+    pagoCalendario = new Date(year, mes + 2, 12)
   }
 
-  let diasParaPago
-  if (dia < 12) {
-    diasParaPago = 12 - dia
-  } else {
-    diasParaPago = (new Date(year, mes + 1, 12) - hoy) / (1000 * 60 * 60 * 24)
+  const pendientes = Object.values(cierres).filter(c => !c.pagado)
+  const proximaFecha = (campo, respaldo) => {
+    const fecha = pendientes
+      .map(c => c[campo])
+      .filter(f => f && new Date(`${f}T00:00:00`) >= fechaHoy)
+      .sort()[0]
+    return fecha ? new Date(`${fecha}T00:00:00`) : respaldo
   }
+  const fechaCierre = proximaFecha('cierre', cierreCalendario)
+  const fechaPago = proximaFecha('pago', pagoCalendario)
 
   return {
-    cierre: Math.ceil(diasParaCierre),
-    pago: Math.ceil(diasParaPago)
+    cierre: Math.ceil((fechaCierre - hoy) / (1000 * 60 * 60 * 24)),
+    pago: Math.ceil((fechaPago - hoy) / (1000 * 60 * 60 * 24)),
+    fechaCierre: fechaCierre.toLocaleDateString('es-PE'),
+    fechaPago: fechaPago.toLocaleDateString('es-PE'),
   }
 }
 
@@ -122,10 +133,108 @@ function ModalLineaCredito({ valor, onGuardar, onCerrar }) {
   )
 }
 
+function ModalDetalleGasto({ gasto, onCerrar }) {
+  return (
+    <div onClick={e => e.target === e.currentTarget && onCerrar()}
+      className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-3xl">
+        <div className="flex justify-between items-start gap-4 mb-4">
+          <div>
+            <p className="text-[11px] text-muted uppercase tracking-wider mb-1">Detalle del gasto</p>
+          </div>
+          <button onClick={onCerrar} aria-label="Cerrar detalle" className="text-muted bg-transparent border-0 cursor-pointer">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[620px] border-collapse text-sm">
+            <thead>
+              <tr className="border-y border-border">
+                {['Lugar', 'Fecha', 'Monto', 'Descripción'].map(titulo => (
+                  <th key={titulo} scope="col" className="px-3 py-2.5 text-left text-[11px] font-medium text-muted uppercase tracking-wider">{titulo}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="px-3 py-3 text-gray-600 align-top">{gasto.lugar}</td>
+                <td className="px-3 py-3 text-gray-600 whitespace-nowrap align-top">{fmtFecha(gasto.fecha)}</td>
+                <td className="px-3 py-3 font-semibold text-accent whitespace-nowrap align-top">{fmt(gasto.monto)}</td>
+                <td className="px-3 py-3 text-gray-600 whitespace-pre-wrap break-words align-top">{gasto.descripcion?.trim() || 'Sin descripción'}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ModalCronogramaGasto({ gasto, onCerrar }) {
+  const cantidadCuotas = Number(gasto.cuotas) || 0
+  const calculo = calcularCuotas(gasto.monto, cantidadCuotas, gasto.cuota_mensual)
+  const fechaCompra = new Date(`${gasto.fecha}T00:00:00`)
+  const indiceMesInicio = MESES.indexOf(gasto.mes)
+  const mesInicio = indiceMesInicio >= 0 ? indiceMesInicio : fechaCompra.getMonth()
+  const anioInicio = fechaCompra.getFullYear() + (mesInicio < fechaCompra.getMonth() ? 1 : 0)
+  const cronograma = Array.from({ length: cantidadCuotas }, (_, indice) => {
+    const indiceMes = mesInicio + indice
+    const mes = indiceMes % 12
+    const anio = anioInicio + Math.floor(indiceMes / 12)
+    const fechaPago = new Date(anio, mes + 1, 12)
+    const monto = calculo.cuotaMensual > 0
+      ? Math.max(0, calculo.cuotaMensual - (indice === 0 ? Number(gasto.cashback) || 0 : 0))
+      : null
+    return { numero: indice + 1, periodo: `${MESES[mes]} ${anio}`, fechaPago, monto }
+  })
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onCerrar()}
+      className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-2xl">
+        <div className="flex justify-between items-start gap-4 mb-4">
+          <div>
+            <p className="text-[11px] text-muted uppercase tracking-wider mb-1">Cronograma de cuotas</p>
+            <h2 className="m-0 text-lg font-semibold text-gray-800">{gasto.lugar}</h2>
+          </div>
+          <button onClick={onCerrar} aria-label="Cerrar cronograma" className="text-muted bg-transparent border-0 cursor-pointer">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] border-collapse text-sm">
+            <thead>
+              <tr className="border-y border-border">
+                {['Cuota', 'Periodo', 'Fecha de pago', 'Monto'].map(titulo => (
+                  <th key={titulo} scope="col" className="px-3 py-2.5 text-left text-[11px] font-medium text-muted uppercase tracking-wider">{titulo}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {cronograma.map(cuota => (
+                <tr key={cuota.numero} className="border-b border-border">
+                  <td className="px-3 py-2.5 text-gray-600">{cuota.numero}/{cantidadCuotas}</td>
+                  <td className="px-3 py-2.5 text-gray-600">{cuota.periodo}</td>
+                  <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{cuota.fechaPago.toLocaleDateString('es-PE')}</td>
+                  <td className="px-3 py-2.5 font-medium text-accent whitespace-nowrap">{cuota.monto === null ? 'Por definir' : fmt(cuota.monto)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Tarjeta de mes ────────────────────────────────────────────────────────────
-function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes, onMarcarPagado, onEditar, onEliminar, onAgregar }) {
+function TarjetaMes({ mes, gastos, cierre, totalPagarMes, resumenCategoriasMes, cuotasPendientesEnMes, onMarcarPagado, onEditar, onEliminar, onAgregar }) {
   const [expandido, setExpandido] = useState(false)
+  const [detalle, setDetalle] = useState(null)
+  const [cronograma, setCronograma] = useState(null)
   const total = totalPagarMes(mes)
+  const resumenCategorias = resumenCategoriasMes(mes)
+  const mayorCategoria = Math.max(...resumenCategorias.map(item => item.total), 0)
   const esPagado = cierre?.pagado
   const cuotasExternas = cuotasPendientesEnMes(mes)
 
@@ -157,7 +266,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
           >
             {/* Cuotas arrastradas */}
             {cuotasExternas.length > 0 && (
-              <div className="bg-white border border-gray-400 px-4 py-2.5">
+              <div className="bg-white border-b border-gray-400 px-4 py-2.5">
                 <p className="text-[11px] text-muted uppercase tracking-wider mb-2">Cuotas de meses anteriores</p>
                 {cuotasExternas.map(g => (
                   <div key={g.id} className="flex justify-between items-center text-sm py-1 text-muted flex-wrap gap-1">
@@ -171,12 +280,32 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
               </div>
             )}
 
+            {resumenCategorias.length > 0 && (
+              <div className="px-4 py-3 border-b border-border">
+                <div className="mb-2">
+                  <h3 className="m-0 text-sm font-semibold text-gray-800">Gastos por categoría</h3>
+                  <p className="m-0 mt-0.5 text-xs text-muted">Cuotas correspondientes a este mes; no incluye abonos.</p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {resumenCategorias.map(item => (
+                    <div key={item.categoria} className="grid grid-cols-[minmax(6rem,1fr)_minmax(4rem,2fr)_auto] items-center gap-3 text-xs">
+                      <span className="truncate text-gray-600">{item.categoria}</span>
+                      <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+                        <div className="h-full rounded-full bg-accent" style={{ width: `${mayorCategoria ? item.total / mayorCategoria * 100 : 0}%` }} />
+                      </div>
+                      <span className="font-medium text-gray-700 whitespace-nowrap">{fmt(item.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Tabla */}
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-[13px]" style={{ minWidth: 560 }}>
                 <thead>
                   <tr className="bg-white">
-                    {['LUGAR', 'FECHA', 'MONTO', 'CUOTAS', 'CUOTA/MES', 'INTERÉS', 'CASHBACK', 'TOTAL', ''].map(h => (
+                    {['LUGAR', 'CATEGORÍA', 'FECHA', 'MONTO', 'CUOTAS', 'CUOTA/MES', 'INTERÉS', 'CASHBACK', 'TOTAL', ''].map(h => (
                       <th key={h} className="px-3 py-2.5 text-left text-muted font-medium text-[11px] tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -190,6 +319,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
                           <td className="px-3 py-2.5 font-medium text-gray-600 max-w-40 overflow-hidden text-ellipsis whitespace-nowrap">
                             <span className="flex items-center gap-1.5">{g.lugar}</span>
                           </td>
+                          <td className="px-3 py-2.5 text-muted">—</td>
                           <td className="px-3 py-2.5 text-muted text-xs whitespace-nowrap">{fmtFecha(g.fecha)}</td>
                           <td className="px-3 py-2.5 text-success font-semibold whitespace-nowrap">-{fmt(g.monto)}</td>
                           <td className="px-3 py-2.5 text-center"><span className="bg-success text-white px-2 py-0.5 rounded text-xs">ABONO</span></td>
@@ -198,16 +328,19 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
                           <td className="px-3 py-2.5 text-muted">—</td>
                           <td className="px-3 py-2.5 font-semibold text-success whitespace-nowrap">-{fmt(g.monto)}</td>
                           <td className="px-2 py-2.5">
-                            {!esPagado ? (
-                              <div className="flex gap-1.5">
+                            <div className="flex gap-1.5">
+                              <button onClick={() => setDetalle(g)} aria-label={`Ver detalle de ${g.lugar}`} title="Ver detalle" className="px-2.5 py-1 text-muted cursor-pointer text-xs">
+                                <Eye size={14} />
+                              </button>
+                              {!esPagado && <>
                                 <button onClick={() => onEditar(g)} className="px-2.5 py-1 text-muted cursor-pointer text-xs">
                                   <Pencil size={14} />
                                 </button>
                                 <button onClick={() => onEliminar(g)} className="px-2.5 py-1 text-danger cursor-pointer text-xs">
                                   <Trash size={14} />
                                 </button>
-                              </div>
-                            ) : <span className="text-[11px] text-muted">—</span>}
+                              </>}
+                            </div>
                           </td>
                         </tr>
                       )
@@ -215,6 +348,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
                     return (
                       <tr key={g.id} className="border-t border-border hover:bg-gray-100 transition-colors">
                         <td className="px-3 py-2.5 font-medium text-gray-600 max-w-40 overflow-hidden text-ellipsis whitespace-nowrap">{g.lugar}</td>
+                        <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{g.categoria || 'Sin categoría'}</td>
                         <td className="px-3 py-2.5 text-muted text-xs whitespace-nowrap">{fmtFecha(g.fecha)}</td>
                         <td className="px-3 py-2.5 text-black whitespace-nowrap">{fmt(g.monto)}</td>
                         <td className="px-3 py-2.5 text-center">
@@ -233,16 +367,22 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
                         </td>
                         <td className="px-3 py-2.5 font-semibold text-accent whitespace-nowrap">{fmt(Math.max(0, calc.totalPagar - Number(g.cashback || 0)))}</td>
                         <td className="px-2 py-2.5">
-                          {!esPagado ? (
-                            <div className="flex gap-1.5">
+                          <div className="flex gap-1.5">
+                            <button onClick={() => setDetalle(g)} aria-label={`Ver detalle de ${g.lugar}`} title="Ver detalle" className="px-2.5 py-1 text-muted cursor-pointer text-xs">
+                              <Eye size={14} />
+                            </button>
+                            {Number(g.cuotas) > 0 && <button onClick={() => setCronograma(g)} aria-label={`Ver cronograma de cuotas de ${g.lugar}`} title="Ver cronograma de cuotas" className="px-2.5 py-1 text-muted cursor-pointer text-xs">
+                              <CalendarClock size={14} />
+                            </button>}
+                            {!esPagado && <>
                               <button onClick={() => onEditar(g)} className="px-2.5 py-1 text-muted cursor-pointer text-xs">
                                 <Pencil size={14} />
                               </button>
                               <button onClick={() => onEliminar(g)} className="px-2.5 py-1 text-danger cursor-pointer text-xs">
                                 <Trash size={14} />
                               </button>
-                            </div>
-                          ) : <span className="text-[11px] text-muted">—</span>}
+                            </>}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -273,6 +413,8 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, cuotasPendientesEnMes,
         )}
       </AnimatePresence>
 
+      {detalle && <ModalDetalleGasto gasto={detalle} onCerrar={() => setDetalle(null)} />}
+      {cronograma && <ModalCronogramaGasto gasto={cronograma} onCerrar={() => setCronograma(null)} />}
 
     </div>
   )
@@ -285,7 +427,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
     gastos, cierres, meses, cargando,
     lineaCredito, setLineaCredito,
     disponible, deudaPendiente,
-    gastosPorMes, totalPagarMes, cuotasPendientesEnMes,
+    gastosPorMes, totalPagarMes, resumenCategoriasMes, cuotasPendientesEnMes,
     alertas, agregarGasto, editarGasto, eliminarGasto,
     marcarPagado, resetearTodo,
   } = useGastos(usuario.id, lineaActiva.id)
@@ -310,7 +452,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
 
 
   const totalGeneral = meses.reduce((sum, mes) => sum + totalPagarMes(mes), 0)
-  const dias = calcularDiasRestantes()
+  const dias = calcularDiasRestantes(cierres)
 
   if (cargando) {
     return (
@@ -375,6 +517,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
         <BarraCredito lineaCredito={lineaCredito} deudaPendiente={deudaPendiente} disponible={disponible} onEditar={() => setModalLinea(true)} />
 
         {/* Días restantes */}
+        {deudaPendiente > 0 && (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3 mb-5">
           <div className="bg-white border border-gray-400 rounded-2xl p-5">
             <div className="flex items-center gap-2 mb-1">
@@ -384,7 +527,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
             <span className={`text-2xl font-medium ${dias.cierre <= 5 ? 'text-danger' : dias.cierre <= 15 ? 'text-warning' : 'text-success'}`}>
               {dias.cierre} día{dias.cierre !== 1 ? 's' : ''}
             </span>
-            <p className="text-xs text-muted m-0 mt-1">Fecha: 25/{new Date().getMonth() + 1 < 10 ? '0' : ''}{new Date().getMonth() + 1}/{new Date().getFullYear()}</p>
+            <p className="text-xs text-muted m-0 mt-1">Fecha: {dias.fechaCierre}</p>
           </div>
           <div className="bg-white border border-gray-400 rounded-2xl p-5">
             <div className="flex items-center gap-2 mb-1">
@@ -394,9 +537,10 @@ export default function App({ usuario, lineaActiva, onVolver }) {
             <span className={`text-2xl font-medium ${dias.pago <= 5 ? 'text-danger' : dias.pago <= 15 ? 'text-accent' : 'text-success'}`}>
               {dias.pago} día{dias.pago !== 1 ? 's' : ''}
             </span>
-            <p className="text-xs text-muted m-0 mt-1">Fecha: 12/{new Date().getMonth() + 2 > 12 ? '01' : (new Date().getMonth() + 2 < 10 ? '0' : '') + (new Date().getMonth() + 2)}/{new Date().getMonth() + 2 > 12 ? new Date().getFullYear() + 1 : new Date().getFullYear()}</p>
+            <p className="text-xs text-muted m-0 mt-1">Fecha: {dias.fechaPago}</p>
           </div>
         </div>
+        )}
 
         {/* Alertas */}
         {alertas.map(a => (
@@ -445,7 +589,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
         ) : meses.map(mes => (
           <TarjetaMes key={mes} mes={mes}
             gastos={gastosPorMes(mes)} cierre={cierres[mes]}
-            totalPagarMes={totalPagarMes} cuotasPendientesEnMes={cuotasPendientesEnMes}
+            totalPagarMes={totalPagarMes} resumenCategoriasMes={resumenCategoriasMes} cuotasPendientesEnMes={cuotasPendientesEnMes}
             onMarcarPagado={marcarPagado}
             onEditar={g => setModal({ gasto: g, mesDefault: g.mes })}
             onEliminar={g => setConfirmar(g)}

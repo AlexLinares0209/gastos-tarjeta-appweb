@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 
 const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
   'JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
+const CATEGORIAS = ['Comida','Transporte','Hogar','Salud','Entretenimiento','Servicios','Educación','Ropa','Otros']
 
 function obtenerMesFacturacion(fecha) {
   if (!fecha) return null
@@ -22,7 +23,7 @@ const inputCls = "w-full mt-1.5 px-3.5 py-2.5 bg-white border border-border roun
 
 export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas, mesDefault }) {
   const [form, setForm] = useState({
-    lugar: '', fecha: '', monto: '', cuotas: '0', cuota_mensual: '', cashback: '',
+    lugar: '', descripcion: '', categoria: 'Otros', fecha: '', monto: '', cuotas: '0', cuota_mensual: '', cashback: '',
     es_abono: false,
     mes: mesDefault || 'ENERO', ...gasto
   })
@@ -32,7 +33,6 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
   const cuotaMensual = parseFloat(form.cuota_mensual) || 0
   const cashback = parseFloat(form.cashback) || 0
   const calc = calcularCuotas(parseFloat(form.monto) || 0, cuotas, cuotaMensual)
-  const primerMes = cuotas > 0 ? calc.cuotaMensual : parseFloat(form.monto) || 0
 
   const handleSubmit = async () => {
     if (!form.lugar.trim()) return toast.error('Ingresa el nombre del establecimiento')
@@ -40,9 +40,8 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
     if (!form.monto || parseFloat(form.monto) <= 0) return toast.error('Ingresa un monto válido')
     if (!esAbono) {
       if (cuotas > 0 && cuotaMensual < 0) return toast.error('Ingresa una cuota válida')
-      if (cashback < 0 || cashback > primerMes) return toast.error(`El cashback no puede superar ${primerMes.toFixed(2)}`)
     }
-    const guardado = await onGuardar({ ...form, monto: parseFloat(form.monto), cuotas, cuota_mensual: cuotaMensual || null, cashback, es_abono: esAbono })
+    const guardado = await onGuardar({ ...form, categoria: esAbono ? null : form.categoria || 'Otros', monto: parseFloat(form.monto), cuotas, cuota_mensual: cuotaMensual || null, cashback, es_abono: esAbono })
     if (guardado !== false) onCerrar()
   }
 
@@ -77,6 +76,25 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
               placeholder={esAbono ? 'Banco, efectivo, etc.' : 'TAMBO, METRO, etc.'} className={inputCls} />
           </div>
 
+          <div>
+            <label className="text-[11px] text-muted uppercase tracking-wider">Descripción (opcional)</label>
+            <textarea value={form.descripcion || ''}
+              onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))}
+              rows={3} maxLength={500} placeholder="Agrega detalles del gasto"
+              className={`${inputCls} resize-y`} />
+          </div>
+
+          {!esAbono && (
+            <div>
+              <label className="text-[11px] text-muted uppercase tracking-wider">Categoría</label>
+              <select value={form.categoria || 'Otros'}
+                onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))}
+                className={inputCls}>
+                {CATEGORIAS.map(categoria => <option key={categoria} value={categoria}>{categoria}</option>)}
+              </select>
+            </div>
+          )}
+
           {/* Fecha + Mes */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -101,14 +119,6 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
 
           {!esAbono && (
             <>
-              <div>
-                <label className="text-[11px] text-muted uppercase tracking-wider">Cashback aplicado este mes (opcional)</label>
-                <input type="number" step="0.01" min="0" value={form.cashback}
-                  onChange={e => setForm(p => ({ ...p, cashback: e.target.value }))}
-                  placeholder="0.00" className={inputCls} />
-                <p className="mt-1 text-xs text-muted">Se descuenta del total de este mes.</p>
-              </div>
-
               {cuotas > 0 && (
                 <div>
                   <label className="text-[11px] text-muted uppercase tracking-wider">Valor de cada cuota</label>

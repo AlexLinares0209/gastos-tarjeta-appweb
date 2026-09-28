@@ -120,6 +120,10 @@ export function useGastos(userId, lineaCreditoId) {
   }, [userId, lineaCreditoId])
 
   const agregarGasto = async (gasto) => {
+    if (cierres[gasto.mes]?.pagado) {
+      return { error: new Error(`No se pueden agregar gastos al mes ${gasto.mes} porque ya está pagado`) }
+    }
+
     const datos = { ...gasto, user_id: userId, linea_credito_id: lineaCreditoId }
     if (gasto.cuota_mensual == null) delete datos.cuota_mensual
 
@@ -138,8 +142,8 @@ export function useGastos(userId, lineaCreditoId) {
   }
 
   const editarGasto = async (id, datos) => {
-    const { lugar, fecha, monto, cuotas, cuota_mensual, cashback, mes, es_abono } = datos
-    const cambios = { lugar, fecha, monto, cuotas, cashback, mes, es_abono }
+    const { lugar, descripcion, categoria, fecha, monto, cuotas, cuota_mensual, cashback, mes, es_abono } = datos
+    const cambios = { lugar, descripcion, categoria, fecha, monto, cuotas, cashback, mes, es_abono }
     if (cuota_mensual != null) cambios.cuota_mensual = cuota_mensual
     const { error } = await supabase
       .from('gastos')
@@ -244,6 +248,26 @@ export function useGastos(userId, lineaCreditoId) {
     return parseFloat((total - abonosDelMes(mes)).toFixed(2))
   }
 
+  const resumenCategoriasMes = (mes) => {
+    const idxMes = ORDEN_MESES.indexOf(mes)
+    if (idxMes < 0) return []
+
+    const totales = new Map()
+    gastos.forEach(g => {
+      if (g.es_abono) return
+      const diff = idxMes - ORDEN_MESES.indexOf(g.mes)
+      if (diff < 0) return
+      const monto = cuotaParaMes(g, diff)
+      if (monto <= 0) return
+      const categoria = g.categoria?.trim() || 'Sin categoría'
+      totales.set(categoria, (totales.get(categoria) || 0) + monto)
+    })
+
+    return [...totales.entries()]
+      .map(([categoria, total]) => ({ categoria, total: parseFloat(total.toFixed(2)) }))
+      .sort((a, b) => b.total - a.total)
+  }
+
   const cuotasPendientesEnMes = (mes) => {
     const idxMes = ORDEN_MESES.indexOf(mes)
     return gastos.filter(g => {
@@ -283,7 +307,7 @@ export function useGastos(userId, lineaCreditoId) {
     gastos, cierres, meses, cargando,
     lineaCredito, setLineaCredito,
     disponible, deudaPendiente,
-    gastosPorMes, abonosDelMes, totalPagarMes, cuotasPendientesEnMes,
+    gastosPorMes, abonosDelMes, totalPagarMes, resumenCategoriasMes, cuotasPendientesEnMes,
     alertas, agregarGasto, editarGasto, eliminarGasto,
     marcarPagado, actualizarCierre, resetearTodo,
   }
