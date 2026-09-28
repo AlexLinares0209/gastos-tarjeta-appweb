@@ -303,11 +303,18 @@ function TarjetaMes({ mes, gastos, cierre, diaPago, totalPagarMes, resumenCatego
                 <thead>
                   <tr className="bg-white">
                     {['LUGAR', 'CATEGORÍA', 'FECHA', 'MONTO', 'CUOTAS', 'CUOTA/MES', 'INTERÉS', 'CASHBACK', 'TOTAL', ''].map(h => (
-                      <th key={h} className="px-3 py-2.5 text-left text-muted font-medium text-[11px] tracking-wider whitespace-nowrap">{h}</th>
+                      <th key={h} className="border-b px-3 py-2.5 text-left text-muted font-medium text-[11px] tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
+                  {gastos.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="px-3 py-8 text-center text-sm text-muted">
+                        No hay gastos registrados en este periodo
+                      </td>
+                    </tr>
+                  )}
                   {gastos.map(g => {
                     const calc = calcularCuotas(g.monto, g.cuotas, g.cuota_mensual)
                     const tieneCronograma = !g.es_abono && Number(g.cuotas) > 0
