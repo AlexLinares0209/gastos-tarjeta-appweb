@@ -4,6 +4,7 @@ import { useAuth } from './useAuth'
 import { exportarExcel } from './exportar'
 import ModalGasto from './ModalGasto'
 import { CalendarClock, ChevronDown, ChevronRight, Clock, Download, Eye, Goal, LogOut, Pencil, Plus, RotateCcw, Trash, TriangleAlert, ArrowLeft, X } from 'lucide-react'
+import { desplazarPeriodo, etiquetaPeriodo, fechaDePeriodo, obtenerPeriodo, periodoDesdeFecha } from './periodos'
 
 import { AnimatePresence, motion } from 'framer-motion'
 
@@ -12,24 +13,24 @@ import { toast } from 'react-toastify'
 const fmt = n => `S/.${parseFloat(n).toFixed(2)}`
 const fmtFecha = f => { const [a, m, d] = f.split('-'); return `${d}/${m}/${a}` }
 const MotionDiv = motion.div
-const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
 
-function calcularDiasRestantes(cierres) {
+function calcularDiasRestantes(cierres, diaCierreConfig = 25, diaPagoConfig = 12) {
   const hoy = new Date()
   const dia = hoy.getDate()
   const mes = hoy.getMonth()
   const year = hoy.getFullYear()
+  const diaCierre = Number(diaCierreConfig) || 25
+  const diaPago = Number(diaPagoConfig) || 12
 
   const fechaHoy = new Date(year, mes, dia)
-  const cierreCalendario = dia < 25 ? new Date(year, mes, 25) : new Date(year, mes + 1, 25)
-  let pagoCalendario
-  if (dia < 12) {
-    pagoCalendario = new Date(year, mes, 12)
-  } else if (dia < 25) {
-    pagoCalendario = new Date(year, mes + 1, 12)
-  } else {
-    pagoCalendario = new Date(year, mes + 2, 12)
+  const fechaDelMes = (desplazamiento, diaDelMes) => {
+    const mesObjetivo = mes + desplazamiento
+    const ultimoDia = new Date(year, mesObjetivo + 1, 0).getDate()
+    return new Date(year, mesObjetivo, Math.min(diaDelMes, ultimoDia))
   }
+  const cierreCalendario = dia < diaCierre ? fechaDelMes(0, diaCierre) : fechaDelMes(1, diaCierre)
+  const desplazamientoPago = dia < diaPago ? 0 : dia < diaCierre ? 1 : 2
+  const pagoCalendario = fechaDelMes(desplazamientoPago, diaPago)
 
   const pendientes = Object.values(cierres).filter(c => !c.pagado)
   const proximaFecha = (campo, respaldo) => {
@@ -170,22 +171,18 @@ function ModalDetalleGasto({ gasto, onCerrar }) {
   )
 }
 
-function ModalCronogramaGasto({ gasto, onCerrar }) {
+function ModalCronogramaGasto({ gasto, onCerrar, diaPago = 12 }) {
   const cantidadCuotas = Number(gasto.cuotas) || 0
   const calculo = calcularCuotas(gasto.monto, cantidadCuotas, gasto.cuota_mensual)
-  const fechaCompra = new Date(`${gasto.fecha}T00:00:00`)
-  const indiceMesInicio = MESES.indexOf(gasto.mes)
-  const mesInicio = indiceMesInicio >= 0 ? indiceMesInicio : fechaCompra.getMonth()
-  const anioInicio = fechaCompra.getFullYear() + (mesInicio < fechaCompra.getMonth() ? 1 : 0)
+  const periodoInicio = obtenerPeriodo(gasto.periodo || gasto.mes, gasto.fecha)
   const cronograma = Array.from({ length: cantidadCuotas }, (_, indice) => {
-    const indiceMes = mesInicio + indice
-    const mes = indiceMes % 12
-    const anio = anioInicio + Math.floor(indiceMes / 12)
-    const fechaPago = new Date(anio, mes + 1, 12)
+    const periodo = desplazarPeriodo(periodoInicio, indice)
+    const periodoPago = desplazarPeriodo(periodo, 1)
+    const fechaPago = new Date(`${fechaDePeriodo(periodoPago, diaPago)}T00:00:00`)
     const monto = calculo.cuotaMensual > 0
       ? Math.max(0, calculo.cuotaMensual - (indice === 0 ? Number(gasto.cashback) || 0 : 0))
       : null
-    return { numero: indice + 1, periodo: `${MESES[mes]} ${anio}`, fechaPago, monto }
+    return { numero: indice + 1, periodo, fechaPago, monto }
   })
 
   return (
@@ -214,7 +211,7 @@ function ModalCronogramaGasto({ gasto, onCerrar }) {
               {cronograma.map(cuota => (
                 <tr key={cuota.numero} className="border-b border-border">
                   <td className="px-3 py-2.5 text-gray-600">{cuota.numero}/{cantidadCuotas}</td>
-                  <td className="px-3 py-2.5 text-gray-600">{cuota.periodo}</td>
+                  <td className="px-3 py-2.5 text-gray-600">{etiquetaPeriodo(cuota.periodo)}</td>
                   <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{cuota.fechaPago.toLocaleDateString('es-PE')}</td>
                   <td className="px-3 py-2.5 font-medium text-accent whitespace-nowrap">{cuota.monto === null ? 'Por definir' : fmt(cuota.monto)}</td>
                 </tr>
@@ -228,7 +225,7 @@ function ModalCronogramaGasto({ gasto, onCerrar }) {
 }
 
 // ── Tarjeta de mes ────────────────────────────────────────────────────────────
-function TarjetaMes({ mes, gastos, cierre, totalPagarMes, resumenCategoriasMes, cuotasPendientesEnMes, onMarcarPagado, onEditar, onEliminar, onAgregar }) {
+function TarjetaMes({ mes, gastos, cierre, diaPago, totalPagarMes, resumenCategoriasMes, cuotasPendientesEnMes, onMarcarPagado, onEditar, onEliminar, onAgregar }) {
   const [expandido, setExpandido] = useState(false)
   const [detalle, setDetalle] = useState(null)
   const [cronograma, setCronograma] = useState(null)
@@ -245,7 +242,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, resumenCategoriasMes, 
       <div onClick={() => setExpandido(p => !p)}
         className={`flex items-center justify-between flex-wrap gap-2 px-4 py-3.5 cursor-pointer ${expandido ? 'border-b border-border' : ''}`}>
         <div className="flex items-center gap-2.5 flex-wrap">
-          <span className=" text-[13px] text-accent tracking-[2px]">{mes}</span>
+          <span className=" text-[13px] text-accent tracking-[2px]">{etiquetaPeriodo(mes)}</span>
           <Badge pagado={esPagado} />
           {cierre?.pago && <span className="text-xs text-muted">Pago: <span className="text-gray-600">{fmtFecha(cierre.pago)}</span></span>}
         </div>
@@ -267,7 +264,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, resumenCategoriasMes, 
             {/* Cuotas arrastradas */}
             {cuotasExternas.length > 0 && (
               <div className="bg-white border-b border-gray-400 px-4 py-2.5">
-                <p className="text-[11px] text-muted uppercase tracking-wider mb-2">Cuotas de meses anteriores</p>
+                <p className="text-[11px] text-muted uppercase tracking-wider mb-2">Cuotas de periodos anteriores</p>
                 {cuotasExternas.map(g => (
                   <div key={g.id} className="flex justify-between items-center text-sm py-1 text-muted flex-wrap gap-1">
                     <span className="flex items-center gap-1.5 flex-wrap">
@@ -313,6 +310,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, resumenCategoriasMes, 
                 <tbody>
                   {gastos.map(g => {
                     const calc = calcularCuotas(g.monto, g.cuotas, g.cuota_mensual)
+                    const tieneCronograma = !g.es_abono && Number(g.cuotas) > 0
                     if (g.es_abono) {
                       return (
                         <tr key={g.id} className="border-t border-border hover:bg-gray-100 transition-colors">
@@ -331,6 +329,9 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, resumenCategoriasMes, 
                             <div className="flex gap-1.5">
                               <button onClick={() => setDetalle(g)} aria-label={`Ver detalle de ${g.lugar}`} title="Ver detalle" className="px-2.5 py-1 text-muted cursor-pointer text-xs">
                                 <Eye size={14} />
+                              </button>
+                              <button type="button" disabled aria-label={`Sin cronograma de cuotas para ${g.lugar}`} title="Sin cuotas" className="px-2.5 py-1 text-gray-300 cursor-not-allowed text-xs">
+                                <CalendarClock size={14} />
                               </button>
                               {!esPagado && <>
                                 <button onClick={() => onEditar(g)} className="px-2.5 py-1 text-muted cursor-pointer text-xs">
@@ -371,9 +372,13 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, resumenCategoriasMes, 
                             <button onClick={() => setDetalle(g)} aria-label={`Ver detalle de ${g.lugar}`} title="Ver detalle" className="px-2.5 py-1 text-muted cursor-pointer text-xs">
                               <Eye size={14} />
                             </button>
-                            {Number(g.cuotas) > 0 && <button onClick={() => setCronograma(g)} aria-label={`Ver cronograma de cuotas de ${g.lugar}`} title="Ver cronograma de cuotas" className="px-2.5 py-1 text-muted cursor-pointer text-xs">
+                            <button type="button" onClick={tieneCronograma ? () => setCronograma(g) : undefined}
+                              disabled={!tieneCronograma}
+                              aria-label={tieneCronograma ? `Ver cronograma de cuotas de ${g.lugar}` : `Sin cronograma de cuotas para ${g.lugar}`}
+                              title={tieneCronograma ? 'Ver cronograma de cuotas' : 'Sin cuotas'}
+                              className={`px-2.5 py-1 text-xs ${tieneCronograma ? 'text-muted cursor-pointer' : 'text-gray-300 cursor-not-allowed'}`}>
                               <CalendarClock size={14} />
-                            </button>}
+                            </button>
                             {!esPagado && <>
                               <button onClick={() => onEditar(g)} className="px-2.5 py-1 text-muted cursor-pointer text-xs">
                                 <Pencil size={14} />
@@ -395,13 +400,13 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, resumenCategoriasMes, 
             <div className="flex justify-between items-center flex-wrap gap-2.5 px-4 py-3 border-t border-border bg-white">
               <div className="flex gap-2 flex-wrap">
                 <button
-                  onClick={() => { if (esPagado) return toast.error(`El mes ${mes} ya fue pagado`); onAgregar(mes) }}
+                  onClick={() => { if (esPagado) return toast.error(`El periodo ${etiquetaPeriodo(mes)} ya fue pagado`); onAgregar(mes) }}
                   className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm border bg-transparent cursor-pointer font-sans transition-opacity
               ${esPagado ? 'border-border text-muted opacity-50 cursor-not-allowed' : 'border-accent text-accent'}`}>
-                  <Plus size={14} /> Agregar
+                  <Plus size={14} /> Nuevo gasto
                 </button>
                 <button
-                  onClick={async () => { const { error } = await onMarcarPagado(mes); if (error) return toast.error('No se pudo actualizar'); toast[!esPagado ? 'success' : 'default'](`Mes ${mes} ${!esPagado ? 'pagado' : 'pendiente'}`) }}
+                  onClick={async () => { const { error } = await onMarcarPagado(mes); if (error) return toast.error('No se pudo actualizar'); toast[!esPagado ? 'success' : 'default'](`Periodo ${etiquetaPeriodo(mes)} ${!esPagado ? 'pagado' : 'pendiente'}`) }}
                   className={`px-3.5 py-1.5 rounded-lg text-sm border cursor-pointer font-sans transition-colors
               ${esPagado ? 'bg-success text-white' : 'bg-transparent border-border text-muted'}`}>
                   {esPagado ? 'Pagado' : 'Marcar pagado'}
@@ -414,7 +419,7 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, resumenCategoriasMes, 
       </AnimatePresence>
 
       {detalle && <ModalDetalleGasto gasto={detalle} onCerrar={() => setDetalle(null)} />}
-      {cronograma && <ModalCronogramaGasto gasto={cronograma} onCerrar={() => setCronograma(null)} />}
+      {cronograma && <ModalCronogramaGasto gasto={cronograma} diaPago={diaPago} onCerrar={() => setCronograma(null)} />}
 
     </div>
   )
@@ -424,8 +429,8 @@ function TarjetaMes({ mes, gastos, cierre, totalPagarMes, resumenCategoriasMes, 
 export default function App({ usuario, lineaActiva, onVolver }) {
   const { cerrarSesion } = useAuth()
   const {
-    gastos, cierres, meses, cargando,
-    lineaCredito, setLineaCredito,
+    gastos, cierres, periodos, cargando,
+    lineaCredito, setLineaCredito, diaCierre, diaPago,
     disponible, deudaPendiente,
     gastosPorMes, totalPagarMes, resumenCategoriasMes, cuotasPendientesEnMes,
     alertas, agregarGasto, editarGasto, eliminarGasto,
@@ -451,8 +456,11 @@ export default function App({ usuario, lineaActiva, onVolver }) {
   }
 
 
-  const totalGeneral = meses.reduce((sum, mes) => sum + totalPagarMes(mes), 0)
-  const dias = calcularDiasRestantes(cierres)
+  const totalGeneral = periodos.reduce((sum, periodo) => sum + totalPagarMes(periodo), 0)
+  const fechaActual = new Date()
+  const fechaActualISO = `${fechaActual.getFullYear()}-${String(fechaActual.getMonth() + 1).padStart(2, '0')}-${String(fechaActual.getDate()).padStart(2, '0')}`
+  const periodoDefault = periodoDesdeFecha(fechaActualISO, diaCierre)
+  const dias = calcularDiasRestantes(cierres, diaCierre, diaPago)
 
   if (cargando) {
     return (
@@ -484,7 +492,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
               className="flex items-center gap-1.5 px-3.5 py-2 bg-success rounded-xl text-white text-sm font-medium cursor-pointer whitespace-nowrap font-sans hover:opacity-90">
               <Download size={14} /> Excel
             </button>
-            <button onClick={() => setModal({ gasto: null, mesDefault: meses[meses.length - 1] || 'ENERO' })}
+            <button onClick={() => setModal({ gasto: null, periodoDefault })}
               className="flex items-center gap-1.5 px-4 py-2 bg-accent rounded-xl text-white text-sm font-semibold cursor-pointer whitespace-nowrap font-sans hover:opacity-90">
               <Plus size={14} /> Nuevo gasto
             </button>
@@ -544,15 +552,15 @@ export default function App({ usuario, lineaActiva, onVolver }) {
 
         {/* Alertas */}
         {alertas.map(a => (
-          <div key={a.mes} className="flex items-center justify-between flex-wrap gap-2.5 bg-warning rounded-xl px-4 py-3 mb-2.5">
+          <div key={a.periodo} className="flex items-center justify-between flex-wrap gap-2.5 bg-warning rounded-xl px-4 py-3 mb-2.5">
             <div className="flex items-center gap-2.5">
               <TriangleAlert size={14} />
               <div>
-                <p className="m-0 text-white font-semibold text-sm">Pago pendiente — {a.mes}</p>
-                <p className="m-0 mt-0.5 text-white text-xs">Fecha: <strong>{a.pago}</strong> · <strong>{fmt(totalPagarMes(a.mes))}</strong></p>
+                <p className="m-0 text-white font-semibold text-sm">Pago pendiente — {etiquetaPeriodo(a.periodo)}</p>
+                <p className="m-0 mt-0.5 text-white text-xs">Fecha: <strong>{a.pago}</strong> · <strong>{fmt(totalPagarMes(a.periodo))}</strong></p>
               </div>
             </div>
-            <button onClick={async () => { const { error } = await marcarPagado(a.mes); if (error) return toast.error('No se pudo actualizar'); toast.success(`Mes ${a.mes} marcado como pagado`) }}
+            <button onClick={async () => { const { error } = await marcarPagado(a.periodo); if (error) return toast.error('No se pudo actualizar'); toast.success(`Periodo ${etiquetaPeriodo(a.periodo)} marcado como pagado`) }}
               className="bg-success border border-success rounded-lg px-3.5 py-1.5 text-white cursor-pointer text-xs whitespace-nowrap font-sans">
               Marcar pagado
             </button>
@@ -565,7 +573,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
           {[
             { label: 'Total acumulado', val: fmt(totalGeneral), cls: 'text-gray-600' },
             { label: 'Pendiente de pago', val: fmt(deudaPendiente), cls: deudaPendiente > 0 ? 'text-warning' : 'text-success' },
-            { label: 'Meses registrados', val: meses.length, cls: 'text-gray-600' },
+            { label: 'Periodos registrados', val: periodos.length, cls: 'text-gray-600' },
           ].map(m => (
             <div key={m.label} className="bg-white border border-gray-400 rounded-xl p-4">
               <p className="m-0 mb-1.5 text-[11px] text-gray-600 uppercase tracking-wider">{m.label}</p>
@@ -575,33 +583,33 @@ export default function App({ usuario, lineaActiva, onVolver }) {
         </div>
 
         {/* Meses */}
-        {meses.length === 0 ? (
+        {periodos.length === 0 ? (
           <div className="flex flex-col justify-center items-center text-center py-20 text-gray-600">
             <p className="text-4xl mb-3">
               <Goal size={32} />
             </p>
             <p className="mb-4">No hay gastos aún</p>
-            <button onClick={() => setModal({ gasto: null, mesDefault: 'ENERO' })}
+            <button onClick={() => setModal({ gasto: null, periodoDefault })}
               className="flex items-center gap-1.5 px-6 py-2.5 bg-accent border-0 rounded-xl text-white text-sm font-semibold cursor-pointer font-sans">
               <Plus size={14} /> Agregar primer gasto
             </button>
           </div>
-        ) : meses.map(mes => (
-          <TarjetaMes key={mes} mes={mes}
-            gastos={gastosPorMes(mes)} cierre={cierres[mes]}
-            totalPagarMes={totalPagarMes} resumenCategoriasMes={resumenCategoriasMes} cuotasPendientesEnMes={cuotasPendientesEnMes}
+        ) : periodos.map(periodo => (
+          <TarjetaMes key={periodo} mes={periodo}
+            gastos={gastosPorMes(periodo)} cierre={cierres[periodo]}
+            diaPago={diaPago} totalPagarMes={totalPagarMes} resumenCategoriasMes={resumenCategoriasMes} cuotasPendientesEnMes={cuotasPendientesEnMes}
             onMarcarPagado={marcarPagado}
-            onEditar={g => setModal({ gasto: g, mesDefault: g.mes })}
+            onEditar={g => setModal({ gasto: g, periodoDefault: g.periodo || obtenerPeriodo(g.mes, g.fecha) })}
             onEliminar={g => setConfirmar(g)}
-            onAgregar={mes => setModal({ gasto: null, mesDefault: mes })}
+            onAgregar={periodo => setModal({ gasto: null, periodoDefault: periodo })}
           />
         ))}
       </div>
 
       {/* Modales */}
       {modal !== null && (
-        <ModalGasto gasto={modal.gasto ?? { mes: modal.mesDefault }} mesDefault={modal.mesDefault}
-          onGuardar={handleGuardar} onCerrar={() => setModal(null)} calcularCuotas={calcularCuotas} />
+        <ModalGasto gasto={modal.gasto ?? { periodo: modal.periodoDefault }} periodoDefault={modal.periodoDefault}
+          diaCierre={diaCierre} onGuardar={handleGuardar} onCerrar={() => setModal(null)} calcularCuotas={calcularCuotas} />
       )}
       {modalLinea && (
         <ModalLineaCredito valor={lineaCredito} onGuardar={setLineaCredito} onCerrar={() => setModalLinea(false)} />

@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
-
-const ORDEN_MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
-  'JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
+import { desplazarPeriodo, fechaDePeriodo, indicePeriodo, mesDePeriodo, obtenerPeriodo } from './periodos'
 
 export function calcularCuotas(monto, cuotas, cuotaMensual = 0) {
   if (cuotas === 0) return { cuotaMensual: 0, interes: 0, totalPagar: monto }
@@ -30,50 +28,58 @@ export function cuotaParaMes(gasto, mesIndex) {
   return 0
 }
 
+function periodoDeCierre(cierre) {
+  return cierre.periodo || cierre.fecha_cierre?.slice(0, 7) || obtenerPeriodo(cierre.mes)
+}
+
 export function useGastos(userId, lineaCreditoId) {
   const [gastos, setGastos] = useState([])
   const [cierres, setCierres] = useState({})
   const [lineaCredito, setLineaCreditoState] = useState(1200)
+  const [diaCierre, setDiaCierre] = useState(25)
+  const [diaPago, setDiaPago] = useState(12)
   const [cargando, setCargando] = useState(true)
 
-  async function crearCierreDefault(mes) {
-    const idx = ORDEN_MESES.indexOf(mes)
-    const year = new Date().getFullYear()
-    const cierreDate = `${year}-${String(idx + 1).padStart(2, '0')}-25`
-    const pagoMonth = idx + 2 > 12 ? 1 : idx + 2
-    const pagoYear = idx + 2 > 12 ? year + 1 : year
-    const pagoDate = `${pagoYear}-${String(pagoMonth).padStart(2, '0')}-12`
+  async function crearCierreDefault(periodo, configuracion = { dia_cierre: diaCierre, dia_pago: diaPago }) {
+    const mes = mesDePeriodo(periodo)
+    const periodoPago = desplazarPeriodo(periodo, 1)
+    const cierreDate = fechaDePeriodo(periodo, configuracion?.dia_cierre ?? 25)
+    const pagoDate = fechaDePeriodo(periodoPago, configuracion?.dia_pago ?? 12)
 
     const { data, error } = await supabase
       .from('cierres')
-      .insert({ user_id: userId, linea_credito_id: lineaCreditoId, mes, fecha_cierre: cierreDate, fecha_pago: pagoDate, pagado: false })
+      .insert({ user_id: userId, linea_credito_id: lineaCreditoId, mes, periodo, fecha_cierre: cierreDate, fecha_pago: pagoDate, pagado: false })
       .select()
       .single()
     if (!error) {
       setCierres(prev => ({
         ...prev,
-        [mes]: { cierre: data.fecha_cierre, pago: data.fecha_pago, pagado: false, id: data.id }
+        [periodo]: { cierre: data.fecha_cierre, pago: data.fecha_pago, pagado: false, id: data.id, mes, periodo }
       }))
     }
   }
 
-  async function crearCierresFaltantes() {
+  async function crearCierresFaltantes(configuracion) {
     const [gastosRes, cierresRes] = await Promise.all([
-      supabase.from('gastos').select('mes').eq('linea_credito_id', lineaCreditoId),
-      supabase.from('cierres').select('mes').eq('linea_credito_id', lineaCreditoId),
+      supabase.from('gastos').select('periodo, mes, fecha, cuotas').eq('linea_credito_id', lineaCreditoId),
+      supabase.from('cierres').select('periodo, mes, fecha_cierre').eq('linea_credito_id', lineaCreditoId),
     ])
-    const mesesConGastos = [...new Set((gastosRes.data || []).map(g => g.mes))]
-    const mesesConCierre = new Set((cierresRes.data || []).map(c => c.mes))
-    const mesesFaltantes = mesesConGastos.filter(m => !mesesConCierre.has(m))
-    for (const mes of mesesFaltantes) {
-      await crearCierreDefault(mes)
+    const periodosConGastos = [...new Set((gastosRes.data || []).flatMap(g => {
+      const inicio = obtenerPeriodo(g.periodo || g.mes, g.fecha)
+      if (!inicio) return []
+      return Array.from({ length: Math.max(1, Number(g.cuotas) || 0) }, (_, indice) => desplazarPeriodo(inicio, indice))
+    }))]
+    const periodosConCierre = new Set((cierresRes.data || []).map(periodoDeCierre).filter(Boolean))
+    const periodosFaltantes = periodosConGastos.filter(periodo => !periodosConCierre.has(periodo))
+    for (const periodo of periodosFaltantes) {
+      await crearCierreDefault(periodo, configuracion)
     }
   }
 
   async function cargarTodo() {
     setCargando(true)
-    await Promise.all([cargarGastos(), cargarCierres(), cargarLineaCredito()])
-    await crearCierresFaltantes()
+    const [, , configuracion] = await Promise.all([cargarGastos(), cargarCierres(), cargarLineaCredito()])
+    await crearCierresFaltantes(configuracion)
     setCargando(false)
   }
 
@@ -94,11 +100,15 @@ export function useGastos(userId, lineaCreditoId) {
     if (!error) {
       const mapa = {}
       ;(data || []).forEach(c => {
-        mapa[c.mes] = {
+        const periodo = periodoDeCierre(c)
+        if (!periodo) return
+        mapa[periodo] = {
           cierre: c.fecha_cierre,
           pago: c.fecha_pago,
           pagado: c.pagado,
           id: c.id,
+          mes: c.mes || mesDePeriodo(periodo),
+          periodo,
         }
       })
       setCierres(mapa)
@@ -108,10 +118,15 @@ export function useGastos(userId, lineaCreditoId) {
   async function cargarLineaCredito() {
     const { data } = await supabase
       .from('lineas_credito')
-      .select('limite')
+      .select('limite, dia_cierre, dia_pago')
       .eq('id', lineaCreditoId)
       .single()
-    if (data) setLineaCreditoState(data.limite)
+    if (data) {
+      setLineaCreditoState(data.limite)
+      setDiaCierre(data.dia_cierre ?? 25)
+      setDiaPago(data.dia_pago ?? 12)
+    }
+    return data
   }
 
   useEffect(() => {
@@ -120,11 +135,14 @@ export function useGastos(userId, lineaCreditoId) {
   }, [userId, lineaCreditoId])
 
   const agregarGasto = async (gasto) => {
-    if (cierres[gasto.mes]?.pagado) {
-      return { error: new Error(`No se pueden agregar gastos al mes ${gasto.mes} porque ya está pagado`) }
-    }
+    const periodo = obtenerPeriodo(gasto.periodo || gasto.mes, gasto.fecha)
+    const mes = mesDePeriodo(periodo)
+    if (!periodo || !mes) return { error: new Error('Selecciona un periodo válido') }
+    const periodosGasto = Array.from({ length: Math.max(1, Number(gasto.cuotas) || 0) }, (_, indice) => desplazarPeriodo(periodo, indice))
+    const periodoPagado = periodosGasto.find(periodoGasto => cierres[periodoGasto]?.pagado)
+    if (periodoPagado) return { error: new Error(`No se puede agregar el gasto porque el periodo ${periodoPagado} ya está pagado`) }
 
-    const datos = { ...gasto, user_id: userId, linea_credito_id: lineaCreditoId }
+    const datos = { ...gasto, mes, periodo, user_id: userId, linea_credito_id: lineaCreditoId }
     if (gasto.cuota_mensual == null) delete datos.cuota_mensual
 
     const { data, error } = await supabase
@@ -135,42 +153,61 @@ export function useGastos(userId, lineaCreditoId) {
     if (error) return { error }
 
     setGastos(prev => [...prev, data])
-    if (!cierres[gasto.mes]) {
-      await crearCierreDefault(gasto.mes)
+    for (const periodoGasto of periodosGasto) {
+      if (!cierres[periodoGasto]) await crearCierreDefault(periodoGasto)
     }
     return { error: null }
   }
 
   const editarGasto = async (id, datos) => {
-    const { lugar, descripcion, categoria, fecha, monto, cuotas, cuota_mensual, cashback, mes, es_abono } = datos
-    const cambios = { lugar, descripcion, categoria, fecha, monto, cuotas, cashback, mes, es_abono }
+    const periodo = obtenerPeriodo(datos.periodo || datos.mes, datos.fecha)
+    const mes = mesDePeriodo(periodo)
+    if (!periodo || !mes) return { error: new Error('Selecciona un periodo válido') }
+    const periodosGasto = Array.from({ length: Math.max(1, Number(datos.cuotas) || 0) }, (_, indice) => desplazarPeriodo(periodo, indice))
+    const periodoPagado = periodosGasto.find(periodoGasto => cierres[periodoGasto]?.pagado)
+    if (periodoPagado) return { error: new Error(`No se puede guardar el gasto porque el periodo ${periodoPagado} ya está pagado`) }
+    const { lugar, descripcion, categoria, fecha, monto, cuotas, cuota_mensual, cashback, es_abono } = datos
+    const cambios = { lugar, descripcion, categoria, fecha, monto, cuotas, cuota_mensual, cashback, mes, periodo, es_abono }
     if (cuota_mensual != null) cambios.cuota_mensual = cuota_mensual
     const { error } = await supabase
       .from('gastos')
       .update(cambios)
       .eq('id', id)
-    if (!error) setGastos(prev => prev.map(g => g.id === id ? { ...g, ...datos } : g))
+    if (!error) {
+      setGastos(prev => prev.map(g => g.id === id ? { ...g, ...datos, mes, periodo } : g))
+      for (const periodoGasto of periodosGasto) {
+        if (!cierres[periodoGasto]) await crearCierreDefault(periodoGasto)
+      }
+    }
     return { error }
   }
 
   const eliminarGasto = async (id) => {
   const gasto = gastos.find(g => g.id === id)
+  if (!gasto) return { error: new Error('No se encontró el gasto') }
+  const periodo = obtenerPeriodo(gasto.periodo || gasto.mes, gasto.fecha)
   const { error } = await supabase.from('gastos').delete().eq('id', id)
   if (!error) {
     const nuevosGastos = gastos.filter(g => g.id !== id)
     setGastos(nuevosGastos)
 
-    // Si ya no quedan gastos en ese mes, eliminar el cierre también
-    const quedanEnMes = nuevosGastos.filter(g => g.mes === gasto.mes)
-    if (quedanEnMes.length === 0 && cierres[gasto.mes]) {
-      await supabase.from('cierres').delete().eq('id', cierres[gasto.mes].id)
+    // Si ya no quedan gastos en ese periodo, eliminar el cierre también
+    const indiceObjetivo = indicePeriodo(periodo)
+    const quedanEnPeriodo = nuevosGastos.some(g => {
+      const inicio = obtenerPeriodo(g.periodo || g.mes, g.fecha)
+      const diferencia = indiceObjetivo - indicePeriodo(inicio)
+      return g.es_abono ? diferencia === 0 : diferencia >= 0 && cuotaParaMes(g, diferencia) > 0
+    })
+    if (!quedanEnPeriodo && cierres[periodo]) {
+      await supabase.from('cierres').delete().eq('id', cierres[periodo].id)
       setCierres(prev => {
         const nuevo = { ...prev }
-        delete nuevo[gasto.mes]
+        delete nuevo[periodo]
         return nuevo
       })
     }
   }
+  return { error: null }
 }
 
   const resetearTodo = async () => {
@@ -188,11 +225,11 @@ export function useGastos(userId, lineaCreditoId) {
     return { error: null }
   }
 
-  const marcarPagado = async (mes) => {
-    const cierre = cierres[mes]
+  const marcarPagado = async (periodo) => {
+    const cierre = cierres[periodo]
     if (!cierre) {
-      console.error('No existe cierre para:', mes, 'cierres disponibles:', Object.keys(cierres))
-      return { error: new Error('No existe cierre para este mes') }
+      console.error('No existe cierre para:', periodo, 'cierres disponibles:', Object.keys(cierres))
+      return { error: new Error('No existe cierre para este periodo') }
     }
     const nuevoPagado = !cierre.pagado
     const { error } = await supabase
@@ -203,19 +240,19 @@ export function useGastos(userId, lineaCreditoId) {
       console.error('Error Supabase:', error.message, error.code, error.details, 'cierre.id:', cierre.id)
       return { error }
     }
-    setCierres(prev => ({ ...prev, [mes]: { ...prev[mes], pagado: nuevoPagado } }))
+    setCierres(prev => ({ ...prev, [periodo]: { ...prev[periodo], pagado: nuevoPagado } }))
     return { error: null }
   }
 
-  const actualizarCierre = async (mes, datos) => {
-    const cierre = cierres[mes]
+  const actualizarCierre = async (periodo, datos) => {
+    const cierre = cierres[periodo]
     if (!cierre) return
     const { error } = await supabase
       .from('cierres')
       .update({ fecha_cierre: datos.cierre, fecha_pago: datos.pago })
       .eq('id', cierre.id)
     if (!error) {
-      setCierres(prev => ({ ...prev, [mes]: { ...prev[mes], ...datos } }))
+      setCierres(prev => ({ ...prev, [periodo]: { ...prev[periodo], ...datos } }))
     }
   }
 
@@ -227,35 +264,39 @@ export function useGastos(userId, lineaCreditoId) {
       .eq('id', lineaCreditoId)
   }
 
-  const meses = [...new Set(gastos.map(g => g.mes))].sort(
-    (a, b) => ORDEN_MESES.indexOf(a) - ORDEN_MESES.indexOf(b)
-  )
+  const periodos = [...new Set(gastos.flatMap(g => {
+    const inicio = obtenerPeriodo(g.periodo || g.mes, g.fecha)
+    if (!inicio) return []
+    return Array.from({ length: Math.max(1, Number(g.cuotas) || 0) }, (_, indice) => desplazarPeriodo(inicio, indice))
+  }).filter(Boolean))].sort()
 
-  const gastosPorMes = (mes) => gastos.filter(g => g.mes === mes)
+  const gastosPorMes = (periodo) => gastos.filter(g => obtenerPeriodo(g.periodo || g.mes, g.fecha) === periodo)
 
-  const abonosDelMes = (mes) => gastos
-    .filter(g => g.mes === mes && g.es_abono)
+  const abonosDelMes = (periodo) => gastos
+    .filter(g => obtenerPeriodo(g.periodo || g.mes, g.fecha) === periodo && g.es_abono)
     .reduce((sum, g) => sum + Number(g.monto), 0)
 
-  const totalPagarMes = (mes) => {
-    const idxMes = ORDEN_MESES.indexOf(mes)
+  const totalPagarMes = (periodo) => {
+    const indiceObjetivo = indicePeriodo(periodo)
     let total = 0
     gastos.forEach(g => {
       if (g.es_abono) return
-      const diff = idxMes - ORDEN_MESES.indexOf(g.mes)
+      const inicio = obtenerPeriodo(g.periodo || g.mes, g.fecha)
+      const diff = indiceObjetivo - indicePeriodo(inicio)
       if (diff >= 0) total += cuotaParaMes(g, diff)
     })
-    return parseFloat((total - abonosDelMes(mes)).toFixed(2))
+    return parseFloat((total - abonosDelMes(periodo)).toFixed(2))
   }
 
-  const resumenCategoriasMes = (mes) => {
-    const idxMes = ORDEN_MESES.indexOf(mes)
-    if (idxMes < 0) return []
+  const resumenCategoriasMes = (periodo) => {
+    const indiceObjetivo = indicePeriodo(periodo)
+    if (indiceObjetivo < 0) return []
 
     const totales = new Map()
     gastos.forEach(g => {
       if (g.es_abono) return
-      const diff = idxMes - ORDEN_MESES.indexOf(g.mes)
+      const inicio = obtenerPeriodo(g.periodo || g.mes, g.fecha)
+      const diff = indiceObjetivo - indicePeriodo(inicio)
       if (diff < 0) return
       const monto = cuotaParaMes(g, diff)
       if (monto <= 0) return
@@ -268,31 +309,32 @@ export function useGastos(userId, lineaCreditoId) {
       .sort((a, b) => b.total - a.total)
   }
 
-  const cuotasPendientesEnMes = (mes) => {
-    const idxMes = ORDEN_MESES.indexOf(mes)
+  const cuotasPendientesEnMes = (periodo) => {
+    const indiceObjetivo = indicePeriodo(periodo)
     return gastos.filter(g => {
-      const diff = idxMes - ORDEN_MESES.indexOf(g.mes)
-      return diff > 0 && diff < g.cuotas
+      const diff = indiceObjetivo - indicePeriodo(obtenerPeriodo(g.periodo || g.mes, g.fecha))
+      return diff > 0 && diff < Number(g.cuotas)
     }).map(g => {
-      const diff = idxMes - ORDEN_MESES.indexOf(g.mes)
+      const diff = indiceObjetivo - indicePeriodo(obtenerPeriodo(g.periodo || g.mes, g.fecha))
       const calc = calcularCuotas(g.monto, g.cuotas, g.cuota_mensual)
       return { ...g, cuotaActual: diff + 1, cuotaMensual: calc.cuotaMensual }
     })
   }
 
-  const mesesConDeuda = () => {
+  const periodosConDeuda = () => {
     const set = new Set()
     gastos.forEach(g => {
-      for (let i = 0; i < Math.max(1, g.cuotas); i++) {
-        const idxMes = ORDEN_MESES.indexOf(g.mes) + i
-        if (idxMes < ORDEN_MESES.length) set.add(ORDEN_MESES[idxMes])
+      const inicio = obtenerPeriodo(g.periodo || g.mes, g.fecha)
+      if (!inicio) return
+      for (let i = 0; i < Math.max(1, Number(g.cuotas) || 0); i++) {
+        set.add(desplazarPeriodo(inicio, i))
       }
     })
-    return [...set].filter(mes => !cierres[mes]?.pagado)
+    return [...set].filter(periodo => !cierres[periodo]?.pagado)
   }
 
   const deudaBruta = parseFloat(
-    mesesConDeuda().reduce((sum, mes) => sum + totalPagarMes(mes), 0).toFixed(2)
+    periodosConDeuda().reduce((sum, periodo) => sum + totalPagarMes(periodo), 0).toFixed(2)
   )
 
   const deudaPendiente = deudaBruta
@@ -301,11 +343,11 @@ export function useGastos(userId, lineaCreditoId) {
 
   const alertas = Object.entries(cierres)
     .filter(([, c]) => !c.pagado)
-    .map(([mes, c]) => ({ mes, ...c }))
+    .map(([periodo, c]) => ({ periodo, mes: mesDePeriodo(periodo), ...c }))
 
   return {
-    gastos, cierres, meses, cargando,
-    lineaCredito, setLineaCredito,
+    gastos, cierres, periodos, cargando,
+    lineaCredito, setLineaCredito, diaCierre, diaPago,
     disponible, deudaPendiente,
     gastosPorMes, abonosDelMes, totalPagarMes, resumenCategoriasMes, cuotasPendientesEnMes,
     alertas, agregarGasto, editarGasto, eliminarGasto,

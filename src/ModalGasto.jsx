@@ -2,30 +2,23 @@ import { X } from 'lucide-react'
 import { useState } from 'react'
 
 import { toast } from 'react-toastify'
+import { mesDePeriodo, obtenerPeriodo, periodoDesdeFecha } from './periodos'
 
-const MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
-  'JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
 const CATEGORIAS = ['Comida','Transporte','Hogar','Salud','Entretenimiento','Servicios','Educación','Ropa','Otros']
-
-function obtenerMesFacturacion(fecha) {
-  if (!fecha) return null
-  const date = new Date(fecha + 'T00:00:00')
-  const dia = date.getDate()
-  const mesIndex = date.getMonth()
-  if (dia >= 25) {
-    const siguienteMes = mesIndex + 1
-    return siguienteMes > 11 ? MESES[0] : MESES[siguienteMes]
-  }
-  return MESES[mesIndex]
-}
 
 const inputCls = "w-full mt-1.5 px-3.5 py-2.5 bg-white border border-border rounded-lg text-gray-800 text-sm outline-none focus:border-accent transition-colors"
 
-export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas, mesDefault }) {
+export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas, periodoDefault, diaCierre = 25 }) {
+  const hoy = new Date()
+  const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  const periodoInicial = periodoDefault || gasto?.periodo || obtenerPeriodo(gasto?.mes, gasto?.fecha) || periodoDesdeFecha(hoyISO, diaCierre)
+  const mesInicial = gasto?.mes || mesDePeriodo(periodoInicial)
   const [form, setForm] = useState({
     lugar: '', descripcion: '', categoria: 'Otros', fecha: '', monto: '', cuotas: '0', cuota_mensual: '', cashback: '',
     es_abono: false,
-    mes: mesDefault || 'ENERO', ...gasto
+    ...gasto,
+    mes: mesInicial,
+    periodo: periodoInicial,
   })
 
   const esAbono = form.es_abono
@@ -41,7 +34,7 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
     if (!esAbono) {
       if (cuotas > 0 && cuotaMensual < 0) return toast.error('Ingresa una cuota válida')
     }
-    const guardado = await onGuardar({ ...form, categoria: esAbono ? null : form.categoria || 'Otros', monto: parseFloat(form.monto), cuotas, cuota_mensual: cuotaMensual || null, cashback, es_abono: esAbono })
+    const guardado = await onGuardar({ ...form, mes: mesDePeriodo(form.periodo), periodo: form.periodo, categoria: esAbono ? null : form.categoria || 'Otros', monto: parseFloat(form.monto), cuotas, cuota_mensual: cuotaMensual || null, cashback, es_abono: esAbono })
     if (guardado !== false) onCerrar()
   }
 
@@ -95,25 +88,23 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
             </div>
           )}
 
-          {/* Fecha + Mes */}
+          {/* Fecha + periodo */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] text-muted uppercase tracking-wider">Fecha</label>
               <input type="date" value={form.fecha}
                 onChange={e => {
                   const fecha = e.target.value
-                  const mesAuto = obtenerMesFacturacion(fecha)
-                  setForm(p => ({ ...p, fecha, mes: mesAuto || p.mes }))
+                  const periodoAuto = periodoDesdeFecha(fecha, diaCierre)
+                  setForm(p => ({ ...p, fecha, mes: mesDePeriodo(periodoAuto) || p.mes, periodo: periodoAuto || p.periodo }))
                 }}
                 className={inputCls} />
             </div>
             <div>
-              <label className="text-[11px] text-muted uppercase tracking-wider">Mes facturación</label>
-              <select value={form.mes}
-                onChange={e => setForm(p => ({ ...p, mes: e.target.value }))}
-                className={inputCls}>
-                {MESES.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
+              <label className="text-[11px] text-muted uppercase tracking-wider">Periodo de facturación</label>
+              <input type="month" value={form.periodo || ''}
+                onChange={e => setForm(p => ({ ...p, periodo: e.target.value, mes: mesDePeriodo(e.target.value) || p.mes }))}
+                className={inputCls} />
             </div>
           </div>
 

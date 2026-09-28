@@ -2,19 +2,22 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 import { CreditCard, LogOut, Plus, Pencil, Trash } from 'lucide-react'
 import { toast } from 'react-toastify'
+import { cuotaParaMes } from './useGastos'
+import { desplazarPeriodo, fechaDePeriodo, indicePeriodo, obtenerPeriodo } from './periodos'
 
 const fmt = n => `S/.${parseFloat(n).toFixed(2)}`
-const ORDEN_MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO',
-  'JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
 
 function ModalNuevaLinea({ onGuardar, onCerrar }) {
   const [nombre, setNombre] = useState('')
   const [limite, setLimite] = useState('1200')
+  const [diaCierre, setDiaCierre] = useState('25')
+  const [diaPago, setDiaPago] = useState('12')
 
   const handleSubmit = async () => {
     if (!nombre.trim()) return toast.error('Ingresa un nombre')
     if (!limite || parseFloat(limite) <= 0) return toast.error('Ingresa un límite válido')
-    const result = await onGuardar(nombre.trim().toUpperCase(), parseFloat(limite))
+    if ([diaCierre, diaPago].some(dia => !dia || Number(dia) < 1 || Number(dia) > 31)) return toast.error('Los días deben estar entre 1 y 31')
+    const result = await onGuardar(nombre.trim().toUpperCase(), parseFloat(limite), Number(diaCierre), Number(diaPago))
     if (result !== false) onCerrar()
   }
 
@@ -36,6 +39,20 @@ function ModalNuevaLinea({ onGuardar, onCerrar }) {
               onChange={e => setLimite(e.target.value)}
               className="w-full mt-1.5 px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-black text-sm outline-none focus:border-accent transition-colors" />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] text-muted uppercase tracking-wider">Día de cierre</label>
+              <input type="number" min="1" max="31" value={diaCierre}
+                onChange={e => setDiaCierre(e.target.value)}
+                className="w-full mt-1.5 px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-black text-sm outline-none focus:border-accent transition-colors" />
+            </div>
+            <div>
+              <label className="text-[11px] text-muted uppercase tracking-wider">Día de pago</label>
+              <input type="number" min="1" max="31" value={diaPago}
+                onChange={e => setDiaPago(e.target.value)}
+                className="w-full mt-1.5 px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-black text-sm outline-none focus:border-accent transition-colors" />
+            </div>
+          </div>
           <div className="flex gap-3 mt-1">
             <button onClick={onCerrar}
               className="flex-1 py-2.5 bg-transparent border border-gray-300 rounded-xl text-gray-600 cursor-pointer text-sm font-sans">
@@ -55,11 +72,14 @@ function ModalNuevaLinea({ onGuardar, onCerrar }) {
 function ModalEditarLinea({ linea, onGuardar, onEliminar, onCerrar }) {
   const [nombre, setNombre] = useState(linea.nombre)
   const [limite, setLimite] = useState(String(linea.limite))
+  const [diaCierre, setDiaCierre] = useState(String(linea.dia_cierre ?? 25))
+  const [diaPago, setDiaPago] = useState(String(linea.dia_pago ?? 12))
 
   const handleGuardar = async () => {
     if (!nombre.trim()) return toast.error('Ingresa un nombre')
     if (!limite || parseFloat(limite) <= 0) return toast.error('Ingresa un límite válido')
-    const result = await onGuardar(linea.id, nombre.trim().toUpperCase(), parseFloat(limite))
+    if ([diaCierre, diaPago].some(dia => !dia || Number(dia) < 1 || Number(dia) > 31)) return toast.error('Los días deben estar entre 1 y 31')
+    const result = await onGuardar(linea.id, nombre.trim().toUpperCase(), parseFloat(limite), Number(diaCierre), Number(diaPago))
     if (result !== false) onCerrar()
   }
 
@@ -79,6 +99,20 @@ function ModalEditarLinea({ linea, onGuardar, onEliminar, onCerrar }) {
             <input type="number" min="0" step="50" value={limite}
               onChange={e => setLimite(e.target.value)}
               className="w-full mt-1.5 px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-black text-sm outline-none focus:border-accent transition-colors" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] text-muted uppercase tracking-wider">Día de cierre</label>
+              <input type="number" min="1" max="31" value={diaCierre}
+                onChange={e => setDiaCierre(e.target.value)}
+                className="w-full mt-1.5 px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-black text-sm outline-none focus:border-accent transition-colors" />
+            </div>
+            <div>
+              <label className="text-[11px] text-muted uppercase tracking-wider">Día de pago</label>
+              <input type="number" min="1" max="31" value={diaPago}
+                onChange={e => setDiaPago(e.target.value)}
+                className="w-full mt-1.5 px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-black text-sm outline-none focus:border-accent transition-colors" />
+            </div>
           </div>
           <div className="flex gap-3 mt-1">
             <button onClick={() => { onEliminar(linea.id); onCerrar() }}
@@ -126,6 +160,7 @@ function CardLinea({ linea, stats, onSeleccionar, onEditar }) {
         <span>Deuda: <strong>{fmt(stats.deuda)}</strong></span>
         <span>{stats.gastos} gasto{stats.gastos !== 1 ? 's' : ''}</span>
       </div>
+      <p className="m-0 mt-2 text-xs text-muted">Cierre: día {linea.dia_cierre ?? 25} · Pago: día {linea.dia_pago ?? 12}</p>
     </div>
   )
 }
@@ -142,52 +177,43 @@ export default function SeleccionLinea({ usuario, onSeleccionar, onCerrarSesion 
     for (const linea of lineasData) {
       const { data: gastos } = await supabase
         .from('gastos')
-        .select('monto, cuotas, cuota_mensual, cashback, mes, es_abono')
+        .select('monto, cuotas, cuota_mensual, cashback, mes, periodo, fecha, es_abono')
         .eq('linea_credito_id', linea.id)
 
       const { data: cierresData } = await supabase
         .from('cierres')
-        .select('mes, pagado')
+        .select('mes, periodo, fecha_cierre, pagado')
         .eq('linea_credito_id', linea.id)
 
       const cierresMap = {}
-      ;(cierresData || []).forEach(c => { cierresMap[c.mes] = c.pagado })
+      ;(cierresData || []).forEach(c => {
+        const periodo = c.periodo || c.fecha_cierre?.slice(0, 7) || obtenerPeriodo(c.mes)
+        if (periodo) cierresMap[periodo] = c.pagado
+      })
 
-      const mesesConDeuda = new Set()
+      const periodosConDeuda = new Set()
       ;(gastos || []).forEach(g => {
         if (g.es_abono) return
-        const cuotas = Number(g.cuotas) || 0
-        for (let i = 0; i < Math.max(1, cuotas); i++) {
-          const idx = ORDEN_MESES.indexOf(g.mes) + i
-          if (idx < 12) mesesConDeuda.add(ORDEN_MESES[idx])
-        }
+        const inicio = obtenerPeriodo(g.periodo || g.mes, g.fecha)
+        if (!inicio) return
+        for (let i = 0; i < Math.max(1, Number(g.cuotas) || 0); i++) periodosConDeuda.add(desplazarPeriodo(inicio, i))
       })
 
       let deuda = 0
-      ;[...mesesConDeuda].filter(m => !cierresMap[m]).forEach(mes => {
-        const idxMes = ORDEN_MESES.indexOf(mes)
+      ;[...periodosConDeuda].filter(periodo => !cierresMap[periodo]).forEach(periodo => {
+        const indiceObjetivo = indicePeriodo(periodo)
+        let totalPeriodo = 0
         ;(gastos || []).forEach(g => {
           if (g.es_abono) return
-          const diff = idxMes - ORDEN_MESES.indexOf(g.mes)
-          if (diff < 0) return
-          const cuotas = Number(g.cuotas) || 0
-          const cashback = Number(g.cashback) || 0
-          if (cuotas === 0) {
-            if (diff === 0) deuda += Math.max(0, Number(g.monto) - cashback)
-          } else if (diff >= 0 && diff < cuotas) {
-            const calc = Number(g.cuota_mensual) > 0
-              ? Number(g.cuota_mensual)
-              : Number(g.monto) / cuotas
-            deuda += diff === 0 ? Math.max(0, calc - cashback) : calc
-          }
+          const inicio = obtenerPeriodo(g.periodo || g.mes, g.fecha)
+          const diff = indiceObjetivo - indicePeriodo(inicio)
+          if (diff >= 0) totalPeriodo += cuotaParaMes(g, diff)
         })
+        const abonos = (gastos || [])
+          .filter(g => g.es_abono && obtenerPeriodo(g.periodo || g.mes, g.fecha) === periodo)
+          .reduce((total, g) => total + Number(g.monto), 0)
+        deuda += totalPeriodo - abonos
       })
-
-      const abonosMes = {}
-      ;(gastos || []).filter(g => g.es_abono).forEach(g => {
-        abonosMes[g.mes] = (abonosMes[g.mes] || 0) + Number(g.monto)
-      })
-      Object.values(abonosMes).forEach(a => { deuda -= a })
 
       mapa[linea.id] = {
         deuda: parseFloat(deuda.toFixed(2)),
@@ -216,10 +242,10 @@ export default function SeleccionLinea({ usuario, onSeleccionar, onCerrarSesion 
     Promise.resolve().then(() => cargarLineas())
   }, [usuario.id])
 
-  async function crearLinea(nombre, limite) {
+  async function crearLinea(nombre, limite, diaCierre, diaPago) {
     const { data, error } = await supabase
       .from('lineas_credito')
-      .insert({ user_id: usuario.id, nombre, limite })
+      .insert({ user_id: usuario.id, nombre, limite, dia_cierre: diaCierre, dia_pago: diaPago })
       .select()
       .single()
     if (error) { toast.error('No se pudo crear la línea'); return false }
@@ -229,15 +255,40 @@ export default function SeleccionLinea({ usuario, onSeleccionar, onCerrarSesion 
     return true
   }
 
-  async function editarLinea(id, nombre, limite) {
+  async function editarLinea(id, nombre, limite, diaCierre, diaPago) {
+    const hoy = new Date()
+    const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+    const { data: cierresFuturos, error: errorCierres } = await supabase
+      .from('cierres')
+      .select('id, mes, periodo, fecha_cierre')
+      .eq('linea_credito_id', id)
+      .eq('pagado', false)
+      .gte('fecha_cierre', hoyISO)
+    if (errorCierres) { toast.error('No se pudieron consultar los cierres futuros'); return false }
+
     const { error } = await supabase
       .from('lineas_credito')
-      .update({ nombre, limite })
+      .update({ nombre, limite, dia_cierre: diaCierre, dia_pago: diaPago })
       .eq('id', id)
     if (error) { toast.error('No se pudo actualizar'); return false }
-    setLineas(prev => prev.map(l => l.id === id ? { ...l, nombre, limite } : l))
+
+    const resultadosCierres = await Promise.all((cierresFuturos || []).map(cierre => {
+      const periodo = cierre.periodo || cierre.fecha_cierre?.slice(0, 7)
+      if (!periodo) return null
+      const periodoPago = desplazarPeriodo(periodo, 1)
+      return supabase.from('cierres').update({
+        fecha_cierre: fechaDePeriodo(periodo, diaCierre),
+        fecha_pago: fechaDePeriodo(periodoPago, diaPago),
+      }).eq('id', cierre.id)
+    }).filter(Boolean))
+
+    setLineas(prev => prev.map(l => l.id === id ? { ...l, nombre, limite, dia_cierre: diaCierre, dia_pago: diaPago } : l))
     setStats(prev => ({ ...prev, [id]: { ...prev[id], limite } }))
-    toast.success('Línea actualizada')
+    if (resultadosCierres.some(resultado => resultado.error)) {
+      toast.error('Tarjeta actualizada, pero no se pudieron cambiar todos los cierres futuros')
+    } else {
+      toast.success('Tarjeta y cierres futuros actualizados')
+    }
     return true
   }
 
