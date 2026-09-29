@@ -50,7 +50,7 @@ export default function InputPeriodo({ value, onChange, placeholder = 'MM/AAAA',
       setPosicion({
         position: 'fixed',
         top: abrirArriba ? rect.top - pickerAltura - 4 : rect.bottom + 4,
-        left: rect.left,
+        right: window.innerWidth - rect.right,
         zIndex: 9999,
       })
     }
