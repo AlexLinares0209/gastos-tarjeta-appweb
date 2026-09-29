@@ -12,7 +12,7 @@ import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 
 function Root() {
-  const { usuario, cargando, modoRecuperacion, cerrarSesion } = useAuth()
+  const { usuario, cargando, modoRecuperacion, setModoRecuperacion, cerrarSesion } = useAuth()
   const [lineaActiva, setLineaActiva] = useState(null)
 
   if (cargando) {
@@ -27,7 +27,7 @@ function Root() {
     <>
       <ToastContainer position="top-right" theme="light" />
       {modoRecuperacion
-        ? <RestablecerContrasena />
+        ? <RestablecerContrasena onVolver={() => setModoRecuperacion(false)} />
         : usuario
           ? lineaActiva
             ? <App usuario={usuario} lineaActiva={lineaActiva}

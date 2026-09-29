@@ -3,8 +3,8 @@ import { useAuth } from './useAuth'
 import { toast } from 'react-toastify'
 import { Eye, EyeOff } from 'lucide-react'
 
-export default function RestablecerContrasena() {
-  const { actualizarContrasena, cerrarSesion, setModoRecuperacion } = useAuth()
+export default function RestablecerContrasena({ onVolver }) {
+  const { actualizarContrasena, cerrarSesion } = useAuth()
   const [password, setPassword] = useState('')
   const [confirmar, setConfirmar] = useState('')
   const [verPassword, setVerPassword] = useState(false)
@@ -70,7 +70,7 @@ export default function RestablecerContrasena() {
                 ${cargando ? 'bg-accent cursor-not-allowed' : 'bg-accent cursor-pointer hover:opacity-90'}`}>
               {cargando ? 'Guardando...' : 'Guardar contraseña'}
             </button>
-            <button onClick={() => setModoRecuperacion(false)}
+            <button onClick={onVolver}
               className="text-xs text-muted bg-transparent border-0 cursor-pointer text-center font-sans hover:underline">
               Volver a iniciar sesión
             </button>
