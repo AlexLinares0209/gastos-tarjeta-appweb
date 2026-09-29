@@ -89,7 +89,7 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
           )}
 
           {/* Fecha + periodo */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid md:grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] text-muted uppercase tracking-wider">Fecha</label>
               <input type="date" value={form.fecha}

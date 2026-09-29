@@ -499,7 +499,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
     <div className="min-h-screen bg-white p-6">
 
       {/* Header */}
-      <div className=" bg-white px-4">
+      <div className=" bg-white">
         <div className="max-w-6xl mx-auto py-3.5 flex justify-between items-center gap-3 flex-wrap">
           <div>
             <h1 className="text-lg font-bold text-accent tracking-[3px] m-0">{lineaActiva.nombre}</h1>
