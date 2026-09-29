@@ -3,6 +3,8 @@ import { useState } from 'react'
 
 import { toast } from 'react-toastify'
 import { mesDePeriodo, obtenerPeriodo, periodoDesdeFecha } from './periodos'
+import InputFecha from './components/Inputs/InputFecha'
+import InputPeriodo from './components/Inputs/InputPeriodo'
 
 const CATEGORIAS = ['Comida','Transporte','Hogar','Salud','Entretenimiento','Servicios','Educación','Ropa','S. desgravamen','Otros']
 
@@ -92,19 +94,16 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] text-muted uppercase tracking-wider">Fecha</label>
-              <input type="date" value={form.fecha}
-                onChange={e => {
-                  const fecha = e.target.value
+              <InputFecha value={form.fecha}
+                onChange={fecha => {
                   const periodoAuto = periodoDesdeFecha(fecha, diaCierre)
                   setForm(p => ({ ...p, fecha, mes: mesDePeriodo(periodoAuto) || p.mes, periodo: periodoAuto || p.periodo }))
-                }}
-                className={inputCls} />
+                }} />
             </div>
             <div>
               <label className="text-[11px] text-muted uppercase tracking-wider">P. de facturación</label>
-              <input type="month" value={form.periodo || ''}
-                onChange={e => setForm(p => ({ ...p, periodo: e.target.value, mes: mesDePeriodo(e.target.value) || p.mes }))}
-                className={inputCls} />
+              <InputPeriodo value={form.periodo || ''}
+                onChange={periodo => setForm(p => ({ ...p, periodo, mes: mesDePeriodo(periodo) || p.mes }))} />
             </div>
           </div>
 
