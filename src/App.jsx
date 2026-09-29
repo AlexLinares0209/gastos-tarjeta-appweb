@@ -225,15 +225,17 @@ function ModalCronogramaGasto({ gasto, onCerrar, diaPago = 12 }) {
 }
 
 // ── Tarjeta de mes ────────────────────────────────────────────────────────────
-function TarjetaMes({ mes, gastos, cierre, diaPago, totalPagarMes, resumenCategoriasMes, cuotasPendientesEnMes, onMarcarPagado, onEditar, onEliminar, onAgregar }) {
+function TarjetaMes({ mes, gastos, cierre, diaPago, totalPagarMes, resumenTipoGastoMes, resumenCategoriasMes, cuotasPendientesEnMes, onMarcarPagado, onEditar, onEliminar, onAgregar }) {
   const [expandido, setExpandido] = useState(false)
   const [detalle, setDetalle] = useState(null)
   const [cronograma, setCronograma] = useState(null)
   const total = totalPagarMes(mes)
+  const resumenConsumo = resumenTipoGastoMes(mes)
   const resumenCategorias = resumenCategoriasMes(mes)
   const mayorCategoria = Math.max(...resumenCategorias.map(item => item.total), 0)
   const esPagado = cierre?.pagado
   const cuotasExternas = cuotasPendientesEnMes(mes)
+  const fechaPago = cierre?.pago || fechaDePeriodo(desplazarPeriodo(mes, 1), diaPago)
 
   return (
     <div className="bg-white border border-gray-400 rounded-2xl overflow-hidden mb-4">
@@ -244,7 +246,7 @@ function TarjetaMes({ mes, gastos, cierre, diaPago, totalPagarMes, resumenCatego
         <div className="flex items-center gap-2.5 flex-wrap">
           <span className=" text-[13px] text-accent tracking-[2px]">{etiquetaPeriodo(mes)}</span>
           <Badge pagado={esPagado} />
-          {cierre?.pago && <span className="text-xs text-muted">Pago: <span className="text-gray-600">{fmtFecha(cierre.pago)}</span></span>}
+          {fechaPago && <span className="text-xs text-muted">Pago: <span className="text-gray-600">{fmtFecha(fechaPago)}</span></span>}
         </div>
         <div className="flex items-center gap-2.5">
           <span className={` text-[15px] ${esPagado ? 'text-success' : 'text-accent'}`}>{fmt(total)}</span>
@@ -299,11 +301,11 @@ function TarjetaMes({ mes, gastos, cierre, diaPago, totalPagarMes, resumenCatego
 
             {/* Tabla */}
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-[13px]" style={{ minWidth: 560 }}>
+              <table className="w-full border-collapse text-[13px]" style={{ minWidth: 900 }}>
                 <thead>
                   <tr className="bg-white">
                     {['LUGAR', 'CATEGORÍA', 'FECHA', 'MONTO', 'CUOTAS', 'CUOTA/MES', 'INTERÉS', 'CASHBACK', 'TOTAL', ''].map(h => (
-                      <th key={h} className="border-b px-3 py-2.5 text-left text-muted font-medium text-[11px] tracking-wider whitespace-nowrap">{h}</th>
+                      <th key={h || 'acciones'} className="border-b px-3 py-2.5 text-left text-muted font-medium text-[11px] tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -419,7 +421,18 @@ function TarjetaMes({ mes, gastos, cierre, diaPago, totalPagarMes, resumenCatego
                   {esPagado ? 'Pagado' : 'Marcar pagado'}
                 </button>
               </div>
-              <span className="text-sm font-semibold text-accent whitespace-nowrap">Total: {fmt(total)}</span>
+              <div className="ml-auto flex items-center flex-wrap justify-end gap-x-4 gap-y-2">
+                <div className="flex items-center flex-wrap justify-end gap-x-3 gap-y-1 text-xs text-muted">
+                  {resumenConsumo.total > 0 && (
+                    <>
+                      <span className="text-sm">Contado: <strong className="text-gray-700">{fmt(resumenConsumo.contado)}</strong></span>
+                      <span className="text-sm">Cuotas: <strong className="text-gray-700">{fmt(resumenConsumo.cuotas)}</strong></span>
+                    </>
+                  )}
+                  {resumenConsumo.seguros > 0 && <span className="text-sm">Seguro de desgravamen: <strong className="text-gray-700">{fmt(resumenConsumo.seguros)}</strong></span>}
+                </div>
+                <span className="text-sm font-semibold text-accent whitespace-nowrap">Total: {fmt(total)}</span>
+              </div>
             </div>
           </MotionDiv>
         )}
@@ -439,7 +452,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
     gastos, cierres, periodos, cargando,
     lineaCredito, setLineaCredito, diaCierre, diaPago,
     disponible, deudaPendiente,
-    gastosPorMes, totalPagarMes, resumenCategoriasMes, cuotasPendientesEnMes,
+    gastosPorMes, totalPagarMes, resumenTipoGastoMes, resumenCategoriasMes, cuotasPendientesEnMes,
     alertas, agregarGasto, editarGasto, eliminarGasto,
     marcarPagado, resetearTodo,
   } = useGastos(usuario.id, lineaActiva.id)
@@ -604,7 +617,8 @@ export default function App({ usuario, lineaActiva, onVolver }) {
         ) : periodos.map(periodo => (
           <TarjetaMes key={periodo} mes={periodo}
             gastos={gastosPorMes(periodo)} cierre={cierres[periodo]}
-            diaPago={diaPago} totalPagarMes={totalPagarMes} resumenCategoriasMes={resumenCategoriasMes} cuotasPendientesEnMes={cuotasPendientesEnMes}
+            diaPago={diaPago} totalPagarMes={totalPagarMes} resumenTipoGastoMes={resumenTipoGastoMes}
+            resumenCategoriasMes={resumenCategoriasMes} cuotasPendientesEnMes={cuotasPendientesEnMes}
             onMarcarPagado={marcarPagado}
             onEditar={g => setModal({ gasto: g, periodoDefault: g.periodo || obtenerPeriodo(g.mes, g.fecha) })}
             onEliminar={g => setConfirmar(g)}

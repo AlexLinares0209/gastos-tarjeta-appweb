@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { toast } from 'react-toastify'
 import { mesDePeriodo, obtenerPeriodo, periodoDesdeFecha } from './periodos'
 
-const CATEGORIAS = ['Comida','Transporte','Hogar','Salud','Entretenimiento','Servicios','Educación','Ropa','Otros']
+const CATEGORIAS = ['Comida','Transporte','Hogar','Salud','Entretenimiento','Servicios','Educación','Ropa','S. desgravamen','Otros']
 
 const inputCls = "w-full mt-1.5 px-3.5 py-2.5 bg-white border border-border rounded-lg text-gray-800 text-sm outline-none focus:border-accent transition-colors"
 

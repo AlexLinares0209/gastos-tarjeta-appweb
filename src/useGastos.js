@@ -288,6 +288,28 @@ export function useGastos(userId, lineaCreditoId) {
     return parseFloat((total - abonosDelMes(periodo)).toFixed(2))
   }
 
+  const resumenTipoGastoMes = (periodo) => {
+    const indiceObjetivo = indicePeriodo(periodo)
+    let contado = 0
+    let cuotas = 0
+    let seguros = 0
+    gastos.forEach(g => {
+      if (g.es_abono) return
+      const inicio = obtenerPeriodo(g.periodo || g.mes, g.fecha)
+      const diff = indiceObjetivo - indicePeriodo(inicio)
+      if (diff < 0) return
+      const monto = cuotaParaMes(g, diff)
+      const esDesgravamen = `${g.categoria || ''} ${g.lugar || ''} ${g.descripcion || ''}`.toLowerCase().includes('desgravamen')
+      if (esDesgravamen) seguros += monto
+      else if (Number(g.cuotas) > 0) cuotas += monto
+      else contado += monto
+    })
+    contado = parseFloat(contado.toFixed(2))
+    cuotas = parseFloat(cuotas.toFixed(2))
+    seguros = parseFloat(seguros.toFixed(2))
+    return { contado, cuotas, seguros, total: parseFloat((contado + cuotas + seguros).toFixed(2)) }
+  }
+
   const resumenCategoriasMes = (periodo) => {
     const indiceObjetivo = indicePeriodo(periodo)
     if (indiceObjetivo < 0) return []
@@ -349,7 +371,7 @@ export function useGastos(userId, lineaCreditoId) {
     gastos, cierres, periodos, cargando,
     lineaCredito, setLineaCredito, diaCierre, diaPago,
     disponible, deudaPendiente,
-    gastosPorMes, abonosDelMes, totalPagarMes, resumenCategoriasMes, cuotasPendientesEnMes,
+    gastosPorMes, abonosDelMes, totalPagarMes, resumenTipoGastoMes, resumenCategoriasMes, cuotasPendientesEnMes,
     alertas, agregarGasto, editarGasto, eliminarGasto,
     marcarPagado, actualizarCierre, resetearTodo,
   }
