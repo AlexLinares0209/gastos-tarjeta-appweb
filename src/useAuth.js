@@ -7,6 +7,12 @@ export function useAuth() {
   const [modoRecuperacion, setModoRecuperacion] = useState(false)
 
   useEffect(() => {
+    const hash = window.location.hash
+    if (hash.includes('type=recovery')) {
+      Promise.resolve().then(() => setModoRecuperacion(true))
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUsuario(session?.user ?? null)
       setCargando(false)
