@@ -3,6 +3,7 @@ import { useGastos, calcularCuotas } from './useGastos'
 import { useAuth } from './useAuth'
 import { exportarExcel } from './exportar'
 import ModalGasto from './ModalGasto'
+import MorphingSquare from './components/MorphingSquare'
 import { CalendarClock, ChevronDown, ChevronRight, Clock, Download, Eye, Goal, LogOut, Pencil, Plus, RotateCcw, Trash, TriangleAlert, ArrowLeft, X } from 'lucide-react'
 import { desplazarPeriodo, etiquetaPeriodo, fechaDePeriodo, obtenerPeriodo, periodoDesdeFecha } from './periodos'
 
@@ -485,7 +486,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
   if (cargando) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <p className="text-gray-600 text-lg tracking-[2px]">CARGANDO DATOS...</p>
+        <MorphingSquare message="CARGANDO DATOS..." />
       </div>
     )
   }

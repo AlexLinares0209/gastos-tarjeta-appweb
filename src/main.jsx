@@ -5,6 +5,7 @@ import App from './App.jsx'
 import Login from './Login.jsx'
 import RestablecerContrasena from './RestablecerContrasena.jsx'
 import SeleccionLinea from './SeleccionLinea.jsx'
+import MorphingSquare from './components/MorphingSquare.jsx'
 import { useAuth } from './useAuth.js'
 
 import { ToastContainer } from 'react-toastify'
@@ -17,9 +18,7 @@ function Root() {
   if (cargando) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="text-center text-muted">
-          <p className="font-mono text-xs tracking-[2px]">CARGANDO...</p>
-        </div>
+        <MorphingSquare />
       </div>
     )
   }

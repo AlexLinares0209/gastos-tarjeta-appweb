@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { CreditCard, LogOut, Plus, Pencil, Trash } from 'lucide-react'
 import { toast } from 'react-toastify'
 import { cuotaParaMes } from './useGastos'
+import MorphingSquare from './components/MorphingSquare'
 import { desplazarPeriodo, fechaDePeriodo, indicePeriodo, obtenerPeriodo } from './periodos'
 
 const fmt = n => `S/.${parseFloat(n).toFixed(2)}`
@@ -303,7 +304,7 @@ export default function SeleccionLinea({ usuario, onSeleccionar, onCerrarSesion 
   if (cargando) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <p className="text-gray-600 text-lg tracking-[2px]">CARGANDO...</p>
+        <MorphingSquare />
       </div>
     )
   }
