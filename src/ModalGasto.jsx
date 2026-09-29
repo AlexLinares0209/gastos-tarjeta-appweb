@@ -89,7 +89,7 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
           )}
 
           {/* Fecha + periodo */}
-          <div className="grid md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] text-muted uppercase tracking-wider">Fecha</label>
               <input type="date" value={form.fecha}
@@ -101,7 +101,7 @@ export default function ModalGasto({ gasto, onGuardar, onCerrar, calcularCuotas,
                 className={inputCls} />
             </div>
             <div>
-              <label className="text-[11px] text-muted uppercase tracking-wider">Periodo de facturación</label>
+              <label className="text-[11px] text-muted uppercase tracking-wider">P. de facturación</label>
               <input type="month" value={form.periodo || ''}
                 onChange={e => setForm(p => ({ ...p, periodo: e.target.value, mes: mesDePeriodo(e.target.value) || p.mes }))}
                 className={inputCls} />
