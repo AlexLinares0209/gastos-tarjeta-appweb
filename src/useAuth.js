@@ -8,14 +8,18 @@ export function useAuth() {
 
   useEffect(() => {
     const hash = window.location.hash
-    if (hash.includes('type=recovery')) {
-      Promise.resolve().then(() => setModoRecuperacion(true))
-      window.history.replaceState(null, '', window.location.pathname)
+    const esRecovery = hash.includes('type=recovery')
+
+    if (esRecovery) {
+      queueMicrotask(() => setModoRecuperacion(true))
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUsuario(session?.user ?? null)
       setCargando(false)
+      if (esRecovery) {
+        window.history.replaceState(null, '', window.location.pathname)
+      }
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
