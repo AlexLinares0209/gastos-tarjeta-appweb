@@ -500,7 +500,7 @@ export default function App({ usuario, lineaActiva, onVolver }) {
 
       {/* Header */}
       <div className=" bg-white px-4">
-        <div className="max-w-5xl mx-auto py-3.5 flex justify-between items-center gap-3 flex-wrap">
+        <div className="max-w-6xl mx-auto py-3.5 flex justify-between items-center gap-3 flex-wrap">
           <div>
             <h1 className="text-lg font-bold text-accent tracking-[3px] m-0">{lineaActiva.nombre}</h1>
           </div>
@@ -533,14 +533,14 @@ export default function App({ usuario, lineaActiva, onVolver }) {
 
       </div>
 
-      <div className="max-w-5xl mx-auto mt-4">
+      <div className="max-w-6xl mx-auto mt-4">
         <span className="text-lg md:text-2xl font-regular text-gray-600">
           Hola, <span className='text-accent'>{nombreDeEmail(usuario.email)}</span> ¡bienvenido nuevamente!
         </span>
       </div>
 
       {/* Contenido */}
-      <div className="max-w-5xl mx-auto py-5">
+      <div className="max-w-6xl mx-auto py-5">
 
         <BarraCredito lineaCredito={lineaCredito} deudaPendiente={deudaPendiente} disponible={disponible} onEditar={() => setModalLinea(true)} />
 
